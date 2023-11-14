@@ -251,18 +251,3 @@ function intensity_formula_kpm(swt::SpinWaveTheory, contractor::Contraction{T}; 
     end
 end
 
-function intensity_formula_kpm(sc::SampledCorrelations, elem::Tuple{Symbol,Symbol}; kwargs...)
-    string_formula = "S{$(elem[1]),$(elem[2])}[ix_q,ix_ω]"
-    intensity_formula_kpm(sc,Element(sc, elem); string_formula, kwargs...)
-end
-
-function intensity_formula_kpm(sc::SampledCorrelations, mode::Symbol; kwargs...)
-    contractor, string_formula = contractor_from_mode(sc, mode)
-    intensity_formula(sc, contractor; string_formula, kwargs...)
-end
-
-function intensity_formula(sc::SampledCorrelations, contractor::Contraction{T}; kwargs...) where T
-    intensity_formula_kpm(sc,required_correlations(contractor); return_type = T,kwargs...) do k,ω,correlations
-        intensity = contract(correlations, k, contractor)
-    end
-end
