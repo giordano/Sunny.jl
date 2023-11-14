@@ -64,6 +64,8 @@ function get_all_coefficients(M, ωs, broadening, σ, kT,γ;η=0.05, regularizat
       (ω,x) -> tanh((γ*x/(η*σ))^2) * broadening(ω, x*γ, σ) * (1 + bose_function(kT, x*γ))
     elseif regularization_style == :none
       (ω,x) -> broadening(ω, x*γ, σ) * (1 + bose_function(kT, x*γ))
+    elseif regularization_style == :susceptibility
+      (ω,x) -> broadening(ω, x*γ, σ)
     elseif regularization_style == :srf
       (ω,x) -> srf(γ*x,η*σ) * broadening(ω, x*γ, σ) * (1 + bose_function(kT, x*γ))
     end
