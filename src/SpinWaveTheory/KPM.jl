@@ -13,7 +13,11 @@ Returns the Bose occupation factor for energy, x, at temperature kT.
 """
 
 function bose_function(kT, x) 
-    return 1 / (exp(x/kT) - 1)
+    r =  1 / (exp(x/kT) - 1)
+    if isinf(r)
+      return 0.
+    end
+    return r
 end
 
 """
@@ -34,6 +38,15 @@ function regularization_function(ω,σ)
     end
 end
 
+function srf(ω,σ)
+    if -σ ≤ ω ≤ σ
+        return (3(ω ./σ).^4 .- 2(ω ./σ).^6)
+    else
+        return 1.0
+    end
+end
+
+
 
 """
     get_all_coefficients(M, ωs, broadening, σ, kT,γ)  
@@ -44,8 +57,16 @@ which should be related to the energy resolution. γ is the maximum eigenvalue u
 interval [-1,1]. Regularization is treated using a cubic cutoff function and the negative eigenvalues are zeroed out.
 
 """
-function get_all_coefficients(M, ωs, broadening, σ, kT,γ;η=0.05)
-    f(ω, x) = regularization_function(x*γ,η*σ) * broadening(ω, x*γ, σ) * (1 + bose_function(kT, x*γ))
+function get_all_coefficients(M, ωs, broadening, σ, kT,γ;η=0.05, regularization_style)
+    f = if regularization_style == :cubic
+      (ω,x) -> regularization_function(γ*x,η*σ) * broadening(ω, x*γ, σ) * (1 + bose_function(kT, x*γ))
+    elseif regularization_style == :tanh
+      (ω,x) -> tanh((γ*x/(η*σ))^2) * broadening(ω, x*γ, σ) * (1 + bose_function(kT, x*γ))
+    elseif regularization_style == :none
+      (ω,x) -> broadening(ω, x*γ, σ) * (1 + bose_function(kT, x*γ))
+    elseif regularization_style == :srf
+      (ω,x) -> srf(γ*x,η*σ) * broadening(ω, x*γ, σ) * (1 + bose_function(kT, x*γ))
+    end
     output = OffsetArray(zeros(M, length(ωs)), 0:M-1, 1:length(ωs))
     for i in eachindex(ωs)
         output[:, i] = cheb_coefs(M, 2M, x -> f(ωs[i], x), (-1, 1))
@@ -96,10 +117,9 @@ defined function, broadening. kT is required for the calcualation of the bose fu
 defines the low energy cutoff σ². There is a keyword argument, kernel, which speficies a damping kernel. 
 """
  
-function kpm_dssf(swt::SpinWaveTheory, qs,ωlist,P::Int64,kT,σ,broadening; kernel)
+function kpm_dssf(swt::SpinWaveTheory, qs,ωlist,P::Int64,kT,σ,broadening; kernel, regularization_style)
     # P is the max Chebyshyev coefficient
     (; sys, data) = swt
-    (; R_mat, c_coef) = data
     qs = Sunny.Vec3.(qs)
     Nm, Ns = length(sys.dipoles), sys.Ns[1] # number of magnetic atoms and dimension of Hilbert space
     Nf = sys.mode == :SUN ? Ns-1 : 1
@@ -116,14 +136,13 @@ function kpm_dssf(swt::SpinWaveTheory, qs,ωlist,P::Int64,kT,σ,broadening; kern
     Avec_pref = zeros(ComplexF64, Nm) # initialize array of some prefactors   
     chebyshev_moments = OffsetArray(zeros(ComplexF64,3,3,length(qs),P),1:3,1:3,1:length(qs),0:P-1)
     Sαβs = zeros(ComplexF64,3,3,length(qs),length(ωlist))
-    for (iq, q) in enumerate(qs)
-        q_reshaped = to_reshaped_rlu(swt.sys, q)
+    for qidx in CartesianIndices(qs)
+        q = qs[qidx]
+        q_reshaped = Sunny.to_reshaped_rlu(swt.sys, q)
         u = zeros(ComplexF64,3,2*nmodes)
         if sys.mode == :SUN
             swt_hamiltonian_SUN!(Hmat, swt, q_reshaped)
         else
-            #swt_hamiltonian_dipole!(swt, qmag, Hmat) # this will break, update with new dipole mode code later
-            #throw("Please set mode = :SUN ")
             swt_hamiltonian_dipole!(Hmat, swt, q_reshaped)
         end
         D = 2.0*sparse(Hmat) # calculate D (factor of 2 for correspondence)  
@@ -134,13 +153,13 @@ function kpm_dssf(swt::SpinWaveTheory, qs,ωlist,P::Int64,kT,σ,broadening; kern
         for site = 1:Nm
             # note that d is the chemical coordinates
             chemical_coor = sys.crystal.positions[site] # find chemical coords
-            phase = exp(2*im * π  * dot(q, chemical_coor)) # calculate phase
+            phase = exp(2*im * π  * dot(q_reshaped, chemical_coor)) # calculate phase
             Avec_pref[site] = sqrt_Nm_inv * phase  # define the prefactor of the tS matrices
         end
         # calculate u(q)
         if sys.mode == :SUN
             for site=1:Nm
-                @views tS_μ = s̃_mat[:, :, :, site]*Avec_pref[site] 
+                @views tS_μ = data.dipole_operators[:, :, :, site]*Avec_pref[site] 
                 for μ=1:3
                     for j=2:N
                         u[μ,(j-1)+(site-1)*(N-1) ]=tS_μ[j,1,μ] 
@@ -150,7 +169,7 @@ function kpm_dssf(swt::SpinWaveTheory, qs,ωlist,P::Int64,kT,σ,broadening; kern
             end
         elseif sys.mode == :dipole
             for site = 1:Nm
-                R=R_mat[site]
+                R=data.R_mat[site]
                 u[1,site]= Avec_pref[site] * sqrt_halfS * (R[1,1] + 1im * R[1,2])  
                 u[1,site+nmodes] = Avec_pref[site] * sqrt_halfS * (R[1,1] - 1im * R[1,2])
                 u[2,site]= Avec_pref[site] * sqrt_halfS * (R[2,1] + 1im * R[2,2]) 
@@ -179,7 +198,7 @@ function kpm_dssf(swt::SpinWaveTheory, qs,ωlist,P::Int64,kT,σ,broadening; kern
                 (α1, α0) = (αnew, α1)
             end
         end
-        ωdep =  get_all_coefficients(P,ωlist,broadening,σ,kT,γ)
+        ωdep = get_all_coefficients(P,ωlist,broadening,σ,kT,γ;regularization_style)
         apply_kernel(ωdep,kernel,P)
         for w=1:length(ωlist)
             for α=1:3
@@ -202,15 +221,16 @@ lineshape is specified by the user-defined function, broadening. kT is required 
 the width of the lineshape and defines the low energy cutoff σ². There is an optional keyword argument, kernel, which speficies a 
 damping kernel. The default is to include no damping.  
 """
-function kpm_intensities(swt::SpinWaveTheory, qs, ωvals,P::Int64,kT,σ,broadening; kernel = nothing)
-    (; sys, data) = swt
-    (; R_mat, c_coef) = data
+function kpm_intensities(swt::SpinWaveTheory, qs, ωvals,P::Int64,kT,σ,broadening; kernel = nothing,regularization_style)
+    (; sys) = swt
     qs = Sunny.Vec3.(qs)
-    Sαβs = kpm_dssf(swt, qs,ωvals,P,kT,σ,broadening;kernel)
+    Sαβs = kpm_dssf(swt, qs,ωvals,P,kT,σ,broadening;kernel,regularization_style)
     num_ω = length(ωvals)
     is = zeros(Float64, size(qs)..., num_ω)
     for qidx in CartesianIndices(qs)
-        polar_mat = Sunny.polarization_matrix(swt.recipvecs_chem * qs[qidx])
+        q_reshaped = Sunny.to_reshaped_rlu(sys, qs[qidx])
+        q_absolute = sys.crystal.recipvecs * q_reshaped
+        polar_mat = Sunny.polarization_matrix(q_absolute)
         is[qidx, :] = real(sum(polar_mat .* Sαβs[:,:,qidx,:],dims=(1,2)))
     end
     return is
@@ -243,10 +263,9 @@ function Base.show(io::IO, ::MIME"text/plain", formula::KPMIntensityFormula{T}) 
     println(io,"P = $(formula.P), kT = $(formula.kT), σ = $(formula.σ)")
 end
 
-function intensity_formula_kpm(f,swt::SpinWaveTheory,corr_ix::AbstractVector{Int64}; P =50, kT=Inf,σ=0.1,broadening, kernel=nothing , return_type = Float64, string_formula = "f(Q,ω,S{α,β}[ix_q,ix_ω])")
+function intensity_formula_kpm(f,swt::SpinWaveTheory,corr_ix::AbstractVector{Int64}; P =50, kT=Inf,σ=0.1,broadening, kernel=nothing , return_type = Float64, string_formula = "f(Q,ω,S{α,β}[ix_q,ix_ω])",regularization_style)
     # P is the max Chebyshyev coefficient
     (; sys, data) = swt
-    (; R_mat, c_coef) = data
     Nm, Ns = length(sys.dipoles), sys.Ns[1] # number of magnetic atoms and dimension of Hilbert space
     Nf = sys.mode == :SUN ? Ns-1 : 1
     N=Nf+1
@@ -266,30 +285,30 @@ function intensity_formula_kpm(f,swt::SpinWaveTheory,corr_ix::AbstractVector{Int
     chebyshev_moments = OffsetArray(zeros(ComplexF64,3,3,P),1:3,1:3,0:P-1)
 
     calc_intensity = function(swt::SpinWaveTheory,q::Vec3)
-        q_reshaped = to_reshaped_rlu(swt.sys, q)
+        q_reshaped = Sunny.to_reshaped_rlu(sys, q)
+        q_absolute = swt.sys.crystal.recipvecs * q_reshaped
         u = zeros(ComplexF64,3,2*nmodes)
         if sys.mode == :SUN
             swt_hamiltonian_SUN!(Hmat, swt, q_reshaped)
         else
-            #swt_hamiltonian_dipole!(swt, qmag, Hmat) # this will break, update with new dipole mode code later
-            #throw("Please set mode = :SUN ")
             swt_hamiltonian_dipole!(Hmat, swt, q_reshaped)
         end
         D = 2.0*sparse(Hmat) # calculate D (factor of 2 for correspondence)  
         lo,hi = Sunny.eigbounds(Ĩ*D,n_iters; extend=0.25) # calculate bounds
+
         γ=max(lo,hi) # select upper bound (combine with the preceeding line later)
         A = Ĩ*D / γ
-        # u(q) calculation)
+        # u(q) calculation
         for site = 1:Nm
             # note that d is the chemical coordinates
             chemical_coor = sys.crystal.positions[site] # find chemical coords
-            phase = exp(2*im * π  * dot(q, chemical_coor)) # calculate phase
+            phase = exp(2*im * π  * dot(q_reshaped, chemical_coor)) # calculate phase
             Avec_pref[site] = sqrt_Nm_inv * phase  # define the prefactor of the tS matrices
         end
         # calculate u(q)
         if sys.mode == :SUN
             for site=1:Nm
-                @views tS_μ = s̃_mat[:, :, :, site]*Avec_pref[site] 
+                @views tS_μ = data.dipole_operators[:, :, :, site]*Avec_pref[site] 
                 for μ=1:3
                     for j=2:N
                         u[μ,(j-1)+(site-1)*(N-1) ]=tS_μ[j,1,μ]
@@ -299,7 +318,7 @@ function intensity_formula_kpm(f,swt::SpinWaveTheory,corr_ix::AbstractVector{Int
             end
         elseif sys.mode == :dipole
             for site = 1:Nm
-                R=R_mat[site]
+                R=data.R_mat[site]
                 u[1,site]= Avec_pref[site] * sqrt_halfS * (R[1,1] + 1im * R[1,2])
                 u[1,site+nmodes] = Avec_pref[site] * sqrt_halfS * (R[1,1] - 1im * R[1,2])
                 u[2,site]= Avec_pref[site] * sqrt_halfS * (R[2,1] + 1im * R[2,2])
@@ -331,16 +350,22 @@ function intensity_formula_kpm(f,swt::SpinWaveTheory,corr_ix::AbstractVector{Int
 
         return function(ωlist)
             intensity = zeros(Float64,length(ωlist))
-            ωdep = get_all_coefficients(P,ωlist,broadening,σ,kT,γ)
+            ωdep = get_all_coefficients(P,ωlist,broadening,σ,kT,γ;regularization_style)
             apply_kernel(ωdep,kernel,P)
             Sαβ = Matrix{ComplexF64}(undef,3,3)
+            corrs = Vector{ComplexF64}(undef,num_correlations(swt.observables))
             for (iω,ω) = enumerate(ωlist)
                 for α=1:3
                     for β=1:3
                         Sαβ[α,β] = sum(chebyshev_moments[α,β,:] .* ωdep[:,iω])
                     end
                 end
-                intensity[iω] = f(q,Sαβ[corr_ix])
+
+                for (ci,i) in swt.observables.correlations
+                    (α,β) = ci.I
+                    corrs[i] = Sαβ[α,β]
+                end
+                intensity[iω] = f(q_absolute,corrs[corr_ix])
             end
             return intensity
         end
