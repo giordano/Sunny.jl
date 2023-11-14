@@ -98,7 +98,8 @@ defines the low energy cutoff σ². There is a keyword argument, kernel, which s
  
 function kpm_dssf(swt::SpinWaveTheory, qs,ωlist,P::Int64,kT,σ,broadening; kernel)
     # P is the max Chebyshyev coefficient
-    (; sys, s̃_mat, T̃_mat, Q̃_mat, c′_coef, R_mat, positions_chem) = swt
+    (; sys, data) = swt
+    (; R_mat, c_coef) = data
     qs = Sunny.Vec3.(qs)
     Nm, Ns = length(sys.dipoles), sys.Ns[1] # number of magnetic atoms and dimension of Hilbert space
     Nf = sys.mode == :SUN ? Ns-1 : 1
@@ -115,16 +116,15 @@ function kpm_dssf(swt::SpinWaveTheory, qs,ωlist,P::Int64,kT,σ,broadening; kern
     Avec_pref = zeros(ComplexF64, Nm) # initialize array of some prefactors   
     chebyshev_moments = OffsetArray(zeros(ComplexF64,3,3,length(qs),P),1:3,1:3,1:length(qs),0:P-1)
     Sαβs = zeros(ComplexF64,3,3,length(qs),length(ωlist))
-    for qidx in CartesianIndices(qs)
-        q = qs[qidx]
-        _, qmag = Sunny.chemical_to_magnetic(swt, q)
+    for (iq, q) in enumerate(qs)
+        q_reshaped = to_reshaped_rlu(swt.sys, q)
         u = zeros(ComplexF64,3,2*nmodes)
         if sys.mode == :SUN
-            swt_hamiltonian_SUN!(swt, qmag, Hmat)
+            swt_hamiltonian_SUN!(Hmat, swt, q_reshaped)
         else
             #swt_hamiltonian_dipole!(swt, qmag, Hmat) # this will break, update with new dipole mode code later
             #throw("Please set mode = :SUN ")
-            swt_hamiltonian_dipole!(swt, qmag, Hmat)
+            swt_hamiltonian_dipole!(Hmat, swt, q_reshaped)
         end
         D = 2.0*sparse(Hmat) # calculate D (factor of 2 for correspondence)  
         lo,hi = Sunny.eigbounds(Ĩ*D,n_iters; extend=0.25) # calculate bounds
@@ -133,7 +133,7 @@ function kpm_dssf(swt::SpinWaveTheory, qs,ωlist,P::Int64,kT,σ,broadening; kern
         # u(q) calculation)
         for site = 1:Nm
             # note that d is the chemical coordinates
-            chemical_coor = positions_chem[site] # find chemical coords
+            chemical_coor = sys.crystal.positions[site] # find chemical coords
             phase = exp(2*im * π  * dot(q, chemical_coor)) # calculate phase
             Avec_pref[site] = sqrt_Nm_inv * phase  # define the prefactor of the tS matrices
         end
@@ -203,7 +203,8 @@ the width of the lineshape and defines the low energy cutoff σ². There is an o
 damping kernel. The default is to include no damping.  
 """
 function kpm_intensities(swt::SpinWaveTheory, qs, ωvals,P::Int64,kT,σ,broadening; kernel = nothing)
-    (; sys) = swt
+    (; sys, data) = swt
+    (; R_mat, c_coef) = data
     qs = Sunny.Vec3.(qs)
     Sαβs = kpm_dssf(swt, qs,ωvals,P,kT,σ,broadening;kernel)
     num_ω = length(ωvals)
@@ -244,7 +245,8 @@ end
 
 function intensity_formula_kpm(f,swt::SpinWaveTheory,corr_ix::AbstractVector{Int64}; P =50, kT=Inf,σ=0.1,broadening, kernel=nothing , return_type = Float64, string_formula = "f(Q,ω,S{α,β}[ix_q,ix_ω])")
     # P is the max Chebyshyev coefficient
-    (; sys, s̃_mat, T̃_mat, Q̃_mat, c′_coef, R_mat, positions_chem) = swt
+    (; sys, data) = swt
+    (; R_mat, c_coef) = data
     Nm, Ns = length(sys.dipoles), sys.Ns[1] # number of magnetic atoms and dimension of Hilbert space
     Nf = sys.mode == :SUN ? Ns-1 : 1
     N=Nf+1
@@ -264,14 +266,14 @@ function intensity_formula_kpm(f,swt::SpinWaveTheory,corr_ix::AbstractVector{Int
     chebyshev_moments = OffsetArray(zeros(ComplexF64,3,3,P),1:3,1:3,0:P-1)
 
     calc_intensity = function(swt::SpinWaveTheory,q::Vec3)
-        _, qmag = Sunny.chemical_to_magnetic(swt, q)
+        q_reshaped = to_reshaped_rlu(swt.sys, q)
         u = zeros(ComplexF64,3,2*nmodes)
         if sys.mode == :SUN
-            swt_hamiltonian_SUN!(swt, qmag, Hmat)
+            swt_hamiltonian_SUN!(Hmat, swt, q_reshaped)
         else
             #swt_hamiltonian_dipole!(swt, qmag, Hmat) # this will break, update with new dipole mode code later
             #throw("Please set mode = :SUN ")
-            swt_hamiltonian_dipole!(swt, qmag, Hmat)
+            swt_hamiltonian_dipole!(Hmat, swt, q_reshaped)
         end
         D = 2.0*sparse(Hmat) # calculate D (factor of 2 for correspondence)  
         lo,hi = Sunny.eigbounds(Ĩ*D,n_iters; extend=0.25) # calculate bounds
@@ -280,7 +282,7 @@ function intensity_formula_kpm(f,swt::SpinWaveTheory,corr_ix::AbstractVector{Int
         # u(q) calculation)
         for site = 1:Nm
             # note that d is the chemical coordinates
-            chemical_coor = positions_chem[site] # find chemical coords
+            chemical_coor = sys.crystal.positions[site] # find chemical coords
             phase = exp(2*im * π  * dot(q, chemical_coor)) # calculate phase
             Avec_pref[site] = sqrt_Nm_inv * phase  # define the prefactor of the tS matrices
         end

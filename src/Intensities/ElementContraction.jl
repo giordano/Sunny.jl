@@ -188,7 +188,7 @@ function intensity_formula(sc::SampledCorrelations, contractor::Contraction{T}; 
     end
 end
 
-
+#=
 ###################################################
 intensity_formula_kpm(swt::SpinWaveTheory; kwargs...) = intensity_formula_kpm(swt, :perp; kwargs...)
 function intensity_formula_kpm(swt::SpinWaveTheory, mode::Symbol; kwargs...)
@@ -232,6 +232,36 @@ function intensity_formula_kpm(sc::SampledCorrelations, mode::Symbol; kwargs...)
 end
 
 function intensity_formula_kpm(sc::SampledCorrelations, contractor::Contraction{T}; kwargs...) where T
+    intensity_formula_kpm(sc,required_correlations(contractor); return_type = T,kwargs...) do k,ω,correlations
+        intensity = contract(correlations, k, contractor)
+    end
+end
+=#
+#####################################################
+######################################################
+######## Copy/Paste from intensity_formula to try and adapt kpm ####
+function intensity_formula_kpm(swt::SpinWaveTheory, mode::Symbol; kwargs...)
+    contractor, string_formula = contractor_from_mode(swt, mode)
+    intensity_formula_kpm(swt, contractor; string_formula, kwargs...)
+end
+
+function intensity_formula_kpm(swt::SpinWaveTheory, contractor::Contraction{T}; kwargs...) where T
+    intensity_formula_kpm(swt,required_correlations(contractor); return_type = T,kwargs...) do k,ω,correlations
+        intensity = contract(correlations, k, contractor)
+    end
+end
+
+function intensity_formula_kpm(sc::SampledCorrelations, elem::Tuple{Symbol,Symbol}; kwargs...)
+    string_formula = "S{$(elem[1]),$(elem[2])}[ix_q,ix_ω]"
+    intensity_formula_kpm(sc,Element(sc, elem); string_formula, kwargs...)
+end
+
+function intensity_formula_kpm(sc::SampledCorrelations, mode::Symbol; kwargs...)
+    contractor, string_formula = contractor_from_mode(sc, mode)
+    intensity_formula(sc, contractor; string_formula, kwargs...)
+end
+
+function intensity_formula(sc::SampledCorrelations, contractor::Contraction{T}; kwargs...) where T
     intensity_formula_kpm(sc,required_correlations(contractor); return_type = T,kwargs...) do k,ω,correlations
         intensity = contract(correlations, k, contractor)
     end
