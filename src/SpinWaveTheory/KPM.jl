@@ -344,5 +344,4 @@ function intensity_formula_kpm(f,swt::SpinWaveTheory,corr_ix::AbstractVector{Int
         end
     end
     KPMIntensityFormula{return_type}(P,kT,σ,broadening,kernel,string_formula,calc_intensity)
-    KPMIntensityFormula{return_type}(P,kT,σ,broadening,kernel,string_formula,calc_intensity)
 end
