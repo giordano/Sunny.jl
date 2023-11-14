@@ -320,7 +320,7 @@ function intensity_formula_kpm(f,swt::SpinWaveTheory,corr_ix::AbstractVector{Int
             end
         elseif sys.mode == :dipole
             for site = 1:Nm
-                R=data.R_mat[site]
+                R=data.local_rotations[site]
                 u[1,site]= Avec_pref[site] * sqrt_halfS * (R[1,1] + 1im * R[1,2])
                 u[1,site+nmodes] = Avec_pref[site] * sqrt_halfS * (R[1,1] - 1im * R[1,2])
                 u[2,site]= Avec_pref[site] * sqrt_halfS * (R[2,1] + 1im * R[2,2])
