@@ -57,7 +57,7 @@ which should be related to the energy resolution. γ is the maximum eigenvalue u
 interval [-1,1]. Regularization is treated using a cubic cutoff function and the negative eigenvalues are zeroed out.
 
 """
-function get_all_coefficients(M, ωs, broadening, σ, kT,γ;η=0.05, regularization_style)
+function get_all_coefficients(M, ωs, broadening, σ, kT,γ;η=1.0, regularization_style)
     f = if regularization_style == :cubic
       (ω,x) -> regularization_function(γ*x,η*σ) * broadening(ω, x*γ, σ) * (1 + bose_function(kT, x*γ))
     elseif regularization_style == :tanh
@@ -149,7 +149,7 @@ function kpm_dssf(swt::SpinWaveTheory, qs,ωlist,P::Int64,kT,σ,broadening; kern
         end
         D = 2.0*sparse(Hmat) # calculate D (factor of 2 for correspondence)  
         lo,hi = Sunny.eigbounds(Ĩ*D,n_iters; extend=0.25) # calculate bounds
-        γ=max(lo,hi) # select upper bound (combine with the preceeding line later)
+        γ=max(abs(lo),abs(hi)) # select upper bound (combine with the preceeding line later)
         A = Ĩ*D / γ
         # u(q) calculation)
         for site = 1:Nm
