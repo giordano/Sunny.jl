@@ -120,6 +120,9 @@ include("MonteCarlo/WangLandau.jl")
 include("MonteCarlo/ParallelWangLandau.jl")
 export propose_uniform, propose_flip, propose_delta, @mix_proposals, LocalSampler
 
+include("EntangledUnits.jl")
+export contract_crystal
+
 include("deprecated.jl")
 
 isloaded(pkg::String) = any(k -> k.name == pkg, keys(Base.loaded_modules))
