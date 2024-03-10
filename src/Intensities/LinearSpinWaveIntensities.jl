@@ -16,7 +16,7 @@ The output will be an array with indices identical to `ks`, with the last index 
 Note that `ks` is an array of wave vectors of arbitrary dimension. Each element
 ``k`` of `ks` must be a 3-wavevector in absolute units.
 """
-function intensities_broadened(swt::SpinWaveTheory, ks, ωvals, formula)
+function intensities_broadened(swt::Union{SpinWaveTheory, SpinWaveTheoryUnits}, ks, ωvals, formula)
     ks = Vec3.(ks)
     num_ω = length(ωvals)
 
@@ -37,26 +37,6 @@ function intensities_broadened(swt::SpinWaveTheory, ks, ωvals, formula)
     return is
 end
 
-function intensities_broadened(swt::SpinWaveTheoryUnits, ks, ωvals, formula)
-    ks = Vec3.(ks)
-    num_ω = length(ωvals)
-
-    return_type = typeof(formula).parameters[1]
-    if return_type <: BandStructure 
-        # This only happens if the user sets `kernel = delta_function_kernel`
-        error("intensities_broadened: Can't compute broadened intensities without a finite-width kernel.\nTry: intensity_formula(...; kernel = lorentzian(0.05))")
-    end
-
-    is = zeros(return_type, size(ks)..., num_ω)
-
-    # Compute the intensity at each (k,ω) pair
-    for kidx in CartesianIndices(ks)
-        intensity_as_function_of_ω = formula.calc_intensity(swt, ks[kidx])
-        is[kidx,:] .= intensity_as_function_of_ω(ωvals)
-    end
-
-    return is
-end
 
 """
     dispersion, intensities = intensities_bands(swt::SpinWaveTheory, ks, formula::SpinWaveIntensityFormula)
@@ -73,7 +53,7 @@ The outputs will be arrays with indices identical to `ks`, with the last index
 giving the band index. `dispersions` reports the energy of each band, while
 `intensities` reports the scattering intensity.
 """
-function intensities_bands(swt::SpinWaveTheory, ks, formula::SpinWaveIntensityFormula)
+function intensities_bands(swt::Union{SpinWaveTheory, SpinWaveTheoryUnits}, ks, formula::SpinWaveIntensityFormula)
     if !isnothing(formula.kernel)
         # This is only triggered if the user has explicitly specified a formula with e.g. kT
         # corrections applied, but has not disabled the broadening kernel.

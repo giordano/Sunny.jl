@@ -28,6 +28,11 @@ end
 #     sys_origin :: System
 #     ci :: CrystalContractionInfo
 # end
+# 
+# function ContractedSystem(sys::System{N}, units) where N
+#     sys_contracted, contraction_info = contract_system(sys, units)
+#     ContractedSystem(sys_contracted, sys, contraction_info)
+# end
 
 
 function contract_crystal(crystal, units)
@@ -126,7 +131,7 @@ function expand_crystal(contracted_crystal, contraction_info)
     Crystal(contracted_crystal.latvecs, expanded_positions)
 end
 
-function contracted_Ns(sys_original, contraction_info)
+function Ns_in_units(sys_original, contraction_info)
     # Ns = [Int64[] for _ in 1:natoms(contracted_cryst)] 
     Ns = [Int64[] for _ in 1:length(contraction_info.inverse)] 
     for (n, contracted_sites) in enumerate(contraction_info.inverse)
@@ -175,13 +180,92 @@ function contract_system(::System{0}, _)
     error("Cannot contract a dipole system.")
 end
 
+function accum_pair_coupling_into_bond_operator_in_unit!(op, pc, sys, contracted_site, contraction_info)
+    (; bond, scalar, bilin, biquad, general, isculled) = pc
+    isculled && return
+
+    Ns_all = Ns_in_units(sys, contraction_info)
+    Ns_unit = Ns_all[contracted_site]
+    I_unit = I(prod(Ns_unit))
+
+    # Collect local Hilbert space information
+    i, j = bond.i, bond.j
+    @assert contraction_info.forward[i][1] == contracted_site "Sanity check -- remove later"
+    @assert contraction_info.forward[j][1] == contracted_site "Sanity check -- remove later"
+    i_unit = contraction_info.forward[i][2]
+    j_unit = contraction_info.forward[j][2]
+    Ni = sys.Ns[1, 1, 1, i] 
+    Nj = sys.Ns[1, 1, 1, j] 
+
+    # Add scalar part
+    op += scalar*I_unit
+
+    # Add bilinear part
+    J = bilin isa Float64 ? bilin*I(3) : bilin
+    Si = [local_op_to_unit_op(Sa, i_unit, Ns_unit) for Sa in spin_matrices((Ni-1)/2)]
+    Sj = [local_op_to_unit_op(Sb, j_unit, Ns_unit) for Sb in spin_matrices((Nj-1)/2)]
+    op += Si' * J * Sj
+
+    # Add biquadratic part
+    K = biquad isa Float64 ? diagm(biquad * Sunny.scalar_biquad_metric) : biquad
+    Oi = [local_op_to_unit_op(Oa, i_unit, Ns_unit) for Oa in stevens_matrices_of_dim(2; N=Ni)]
+    Oj = [local_op_to_unit_op(Ob, j_unit, Ns_unit) for Ob in stevens_matrices_of_dim(2; N=Nj)]
+    op += Oi' * K * Oj
+
+    # Add general part
+    for (A, B) in general.data
+        op += local_op_to_unit_op(A, i_unit, Ns_unit) * local_op_to_unit_op(B, j_unit, Ns_unit)
+    end
+end
+
+function pair_coupling_into_bond_operator_between_units(pc, sys, contraction_info)
+    (; bond, scalar, bilin, biquad, general) = pc
+    (; i, j, n) = bond
+    unit1, unitsub1 = contraction_info.forward[i]
+    unit2, unitsub2 = contraction_info.forward[j]
+
+    Ns_local = Ns_in_units(sys, contraction_info)
+    Ns_contracted = map(Ns -> prod(Ns), Ns_local)
+    Ns1 = Ns_local[unit1]
+    Ns2 = Ns_local[unit2]
+    N1 = sys.Ns[1, 1, 1, i]
+    N2 = sys.Ns[1, 1, 1, j]
+    N = Ns_contracted[unit1] * Ns_contracted[unit2]
+    newbond = Bond(unit1, unit2, n)
+
+    bond_operator = zeros(ComplexF64, N, N)
+
+    # Add scalar part
+    bond_operator += scalar*I(N)
+
+    # Add bilinear part
+    J = bilin isa Float64 ? bilin*I(3) : bilin
+    Si = [kron(local_op_to_unit_op(Sa, unitsub1, Ns1), I(Ns_contracted[unit1])) for Sa in spin_matrices((N1-1)/2)]
+    Sj = [kron(I(Ns_contracted[unit2]), local_op_to_unit_op(Sa, unitsub2, Ns2)) for Sa in spin_matrices((N2-1)/2)]
+    bond_operator += Si' * J * Sj
+
+    # Add biquadratic part
+    K = biquad isa Float64 ? diagm(biquad * Sunny.scalar_biquad_metric) : biquad
+    Oi = [kron(local_op_to_unit_op(Oa, unitsub1, Ns1), I(Ns_contracted[unit1])) for Oa in stevens_matrices_of_dim(2; N=N1)]
+    Oj = [kron(I(Ns_contracted[unit2]), local_op_to_unit_op(Ob, unitsub2, Ns2)) for Ob in stevens_matrices_of_dim(2; N=N2)]
+    bond_operator += Oi' * K * Oj
+
+    # Add general part
+    for (A, B) in general.data
+        bond_operator += kron( local_op_to_unit_op(A, unitsub1, Ns1), I(Ns_contracted[unit1]) ) * 
+                            kron( I(Ns_contracted[unit2]), local_op_to_unit_op(B, unitsub2, Ns2) )
+    end
+
+    return (; newbond, bond_operator)
+end
+
 function contract_system(sys::System{M}, units) where M
 
     # Construct contracted crystal
     contracted_crystal, contraction_info = contract_crystal(sys.crystal, units)
 
     # Determine Ns for local Hilbert spaces (all must be equal). (TODO: Determine if alternative behavior preferable in mixed case.)
-    Ns_local = contracted_Ns(sys, contraction_info)
+    Ns_local = Ns_in_units(sys, contraction_info)
     Ns_contracted = map(Ns -> prod(Ns), Ns_local)
     @assert allequal(Ns_contracted) "After contraction, the dimensions of the local Hilbert spaces on each generalized site must all be equal."
 
@@ -191,11 +275,12 @@ function contract_system(sys::System{M}, units) where M
     sys_contracted = System(contracted_crystal, dims, spin_infos, :SUN)
 
     # For each contracted site, scan original interactions and reconstruct as necessary.
+    new_pair_data = Tuple{Bond, Matrix{ComplexF64}}[]
     for (contracted_site, N) in zip(1:natoms(contracted_crystal), Ns_contracted)
 
-        ## TODO: Add Zeeman term
 
         ## Onsite portion of interaction 
+        ## TODO: Add Zeeman term
         relevant_sites = sites_in_unit(contraction_info, contracted_site)
         original_interactions = sys.interactions_union[relevant_sites] 
         onsite_contracted = zeros(ComplexF64, N, N)
@@ -222,114 +307,54 @@ function contract_system(sys::System{M}, units) where M
         end
 
         # Convert intra-unit PairCouplings to onsite couplings
-        Ns = Ns_local[contracted_site]
-        I_unit = reduce(kron, [I(N) for N in Ns])
         for pc in pcs_intra
-            # Note -- can ignore `isculled` because `bonds_in_unit` returns unique bonds
-            (; bond, scalar, bilin, biquad, general) = pc
-
-            # Collect local Hilbert space information
-            i, j = bond.i, bond.j
-            @assert contraction_info.forward[i][1] == contracted_site "Sanity check -- remove later"
-            @assert contraction_info.forward[j][1] == contracted_site "Sanity check -- remove later"
-            i_unit = contraction_info.forward[i][2]
-            j_unit = contraction_info.forward[j][2]
-            Ni = sys.Ns[1, 1, 1, i] 
-            Nj = sys.Ns[1, 1, 1, j] 
-
-            # Add scalar part
-            onsite_contracted += scalar*I_unit
-
-            # Add bilinear part
-            J = bilin isa Float64 ? bilin*I(3) : bilin
-            Si = [local_op_to_unit_op(Sa, i_unit, Ns) for Sa in spin_matrices((Ni-1)/2)]
-            Sj = [local_op_to_unit_op(Sb, j_unit, Ns) for Sb in spin_matrices((Nj-1)/2)]
-            onsite_contracted += Si' * J * Sj
-
-            # Add biquadratic part
-            K = biquad isa Float64 ? diagm(biquad * Sunny.scalar_biquad_metric) : biquad
-            Oi = [local_op_to_unit_op(Oa, i_unit, Ns) for Oa in stevens_matrices_of_dim(2; N=Ni)]
-            Oj = [local_op_to_unit_op(Ob, j_unit, Ns) for Ob in stevens_matrices_of_dim(2; N=Nj)]
-            onsite_contracted += Oi' * K * Oj
-
-            # Add general part
-            for (A, B) in general.data
-                onsite_contracted += local_op_to_unit_op(A, i_unit, Ns) * local_op_to_unit_op(B, j_unit, Ns)
-            end
+            accum_pair_coupling_into_bond_operator_in_unit!(onsite_contracted, pc, sys, contracted_site, contraction_info)
         end
         set_onsite_coupling!(sys_contracted, onsite_contracted, contracted_site)
-        
 
         ## Convert inter-unit PairCouplings into new pair couplings
-        new_pair_data = Tuple{Bond, Matrix{ComplexF64}}[]
         for pc in pcs_inter
-            (; bond, scalar, bilin, biquad, general) = pc
-            (; i, j, n) = bond
-            unit1, unitsub1 = contraction_info.forward[i]
-            unit2, unitsub2 = contraction_info.forward[j]
-            Ns1 = Ns_local[unit1]
-            Ns2 = Ns_local[unit2]
-            N1 = sys.Ns[1, 1, 1, i]
-            N2 = sys.Ns[1, 1, 1, j]
-            N = Ns_contracted[unit1] * Ns_contracted[unit2]
-            newbond = Bond(unit1, unit2, n)
-
-            bond_operator = zeros(ComplexF64, N, N)
-
-            # Add scalar part
-            bond_operator += scalar*I(N)
-
-            # Add bilinear part
-            J = bilin isa Float64 ? bilin*I(3) : bilin
-            Si = [kron(local_op_to_unit_op(Sa, unitsub1, Ns1), I(Ns_contracted[unit1])) for Sa in spin_matrices((N1-1)/2)]
-            Sj = [kron(I(Ns_contracted[unit2]), local_op_to_unit_op(Sa, unitsub2, Ns2)) for Sa in spin_matrices((N2-1)/2)]
-            bond_operator += Si' * J * Sj
-
-            # Add biquadratic part
-            K = biquad isa Float64 ? diagm(biquad * Sunny.scalar_biquad_metric) : biquad
-            Oi = [kron(local_op_to_unit_op(Oa, unitsub1, Ns1), I(Ns_contracted[unit1])) for Oa in stevens_matrices_of_dim(2; N=N1)]
-            Oj = [kron(I(Ns_contracted[unit2]), local_op_to_unit_op(Ob, unitsub2, Ns2)) for Ob in stevens_matrices_of_dim(2; N=N2)]
-            bond_operator += Oi' * K * Oj
-
-            # Add general part
-            for (A, B) in general.data
-                bond_operator += kron( local_op_to_unit_op(A, unitsub1, Ns1), I(Ns_contracted[unit1]) ) * 
-                                 kron( I(Ns_contracted[unit2]), local_op_to_unit_op(B, unitsub2, Ns2) )
-            end
-
+            (; newbond, bond_operator) = pair_coupling_into_bond_operator_between_units(pc, sys, contraction_info)
             push!(new_pair_data, (newbond, bond_operator))
         end
+    end
 
-        # Consolidate interactions on same generalized bonds and make final pair Couplings
-        # Need to check for directionality -- may have interactions Bond(1, 1, [1, 0, 0]) and Bond(1, 1, [-1, 0, 0]) 
-        # which are different parts of an interaction on the same bond and need to be summed.
-        unique_bonds = unique([data[1] for data in new_pair_data])
-        grouped_bonds = []
-        for bond in unique_bonds 
-            bonds = Bond[]
-            push!(bonds, bond)
-            mirror_bond = Bond(bond.i, bond.j, -1*bond.n)
-            idx = findfirst(==(mirror_bond), unique_bonds)
-            if !isnothing(idx)
-                push!(bonds, unique_bonds[idx])
-                deleteat!(unique_bonds, idx)
-            end
-            push!(grouped_bonds, bonds)
+    # Finally combine interactions on identical bonds and set them in the system
+    unique_bonds = unique([data[1] for data in new_pair_data])
+    # for unique_bond in unique_bonds
+    #     bond_data = filter(data -> data[1] == unique_bond, new_pair_data)
+    #     bond_operator = sum(data[2] for data in bond_data)
+    #     println("Setting bond: ", unique_bond)
+    #     set_pair_coupling!(sys_contracted, bond_operator, unique_bond)
+    # end
+
+
+    grouped_bonds = []
+    for bond in unique_bonds 
+        bonds = Bond[]
+        push!(bonds, bond)
+        mirror_bond = Bond(bond.i, bond.j, -1*bond.n)
+        idx = findfirst(==(mirror_bond), unique_bonds)
+        if !isnothing(idx)
+            push!(bonds, unique_bonds[idx])
+            deleteat!(unique_bonds, idx)
         end
+        push!(grouped_bonds, bonds)
+    end
 
 
-        for group in grouped_bonds
-            first_bond = group[1]
-            bond_data = filter(data -> data[1] == first_bond, new_pair_data)
-            bond_operator = sum(data[2] for data in bond_data)
-            if length(group) > 1
-                for bond in group[2:end] 
-                    bond_data = filter(data -> data[1] == bond, new_pair_data)
-                    bond_operator += sum(data[2] for data in bond_data)
-                end
+    for group in grouped_bonds
+        println("New group: ")
+        first_bond = group[1]
+        bond_data = filter(data -> data[1] == first_bond, new_pair_data)
+        bond_operator = sum(data[2] for data in bond_data)
+        if length(group) > 1
+            for bond in group[2:end] 
+                bond_data = filter(data -> data[1] == bond, new_pair_data)
+                bond_operator += sum(data[2] for data in bond_data)
             end
-            set_pair_coupling!(sys_contracted, bond_operator, first_bond)
         end
+        set_pair_coupling!(sys_contracted, bond_operator, first_bond)
     end
 
     return (; sys_contracted, contraction_info)
@@ -342,7 +367,7 @@ function expand_contracted_system!(sys, sys_contracted, contraction_info)
 
     for contracted_site in Sunny.eachsite(sys_contracted)
         i, j, k, n = contracted_site.I
-        Ns_local = contracted_Ns(sys, contraction_info)
+        Ns_local = Ns_in_units(sys, contraction_info)
         Ns = Ns_local[n]
 
         # This iteration will be slow because it's on the last index...

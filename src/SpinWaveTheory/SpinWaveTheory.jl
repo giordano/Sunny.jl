@@ -216,7 +216,7 @@ function swt_data_sun_units(sys::System{N}, sys_original, contraction_info, obs)
 
     # Check to make sure all "units" are the same -- this can be generalized later.
     sites_per_unit = [length(info) for info in contraction_info.inverse]
-    Ns_in_units = contracted_Ns(sys_original, contraction_info)
+    Ns_in_units = Ns_in_units(sys_original, contraction_info)
     Ns_contracted = map(Ns -> prod(Ns), Ns_in_units)
     @assert allequal(sites_per_unit) "All units must have the same number of interior sites"
     sites_per_unit = sites_per_unit[1]
