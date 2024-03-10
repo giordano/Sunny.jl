@@ -1,3 +1,10 @@
+# Data for mapping one site inside a unit back to the site of the original
+# system.
+struct InverseData
+    site   :: Int64
+    offset :: Vec3
+end
+
 # `forward` contains a list from sites of the original crystal to a site of the
 # contracted crystal, including an extra index to keep track entangled units:
 # `(contracted_crystal_site_index, intra_unit_site_index)`. If the first index
@@ -13,10 +20,16 @@
 # the number of sites within the entangled unit.
 struct CrystalContractionInfo
     forward :: Vector{Tuple{Int64, Int64}}          # Original site index -> full unit index (contracted crystal site index and unit subindex)
-    inverse :: Vector{Vector{Tuple{Int64, Vec3}}}   # List ordered according to contracted crystal sites. Each element is itself a list containing original crystal site indices and corresponding offset information 
+    inverse :: Vector{Vector{InverseData}}   # List ordered according to contracted crystal sites. Each element is itself a list containing original crystal site indices and corresponding offset information 
 end
 
-# Given a crystal, 
+# struct ContractedSystem
+#     sys :: System
+#     sys_origin :: System
+#     ci :: CrystalContractionInfo
+# end
+
+
 function contract_crystal(crystal, units)
 
     # Determine which sites are entangled and which are not.
@@ -33,7 +46,7 @@ function contract_crystal(crystal, units)
 
     # Prepare mapping dictionaries and initialize iteration variable.
     forward_map = Dict{Int64, Tuple{Int64, Int64}}()
-    inverse_map = Dict{Tuple{Int64, Int64}, Tuple{Int64, Vec3}}()
+    inverse_map = Dict{Tuple{Int64, Int64}, InverseData}()
     new_site_current = 1
 
     # Add sites that are *not* encapsulated in any unit as individual sites in
@@ -43,7 +56,7 @@ function contract_crystal(crystal, units)
         push!(new_positions, crystal.positions[site])
         new_pair = (new_site_current, 1)
         forward_map[site] = new_pair
-        inverse_map[new_pair] = (site, Vec3(0, 0, 0))
+        inverse_map[new_pair] = InverseData(site, Vec3(0, 0, 0))
         new_site_current += 1
     end
 
@@ -62,7 +75,7 @@ function contract_crystal(crystal, units)
             offset = crystal.positions[site] - new_position
 
             forward_map[site] = new_pair
-            inverse_map[new_pair] = (site, offset)
+            inverse_map[new_pair] = InverseData(site, offset)
         end
 
         new_site_current += 1
@@ -83,7 +96,7 @@ function contract_crystal(crystal, units)
     inverse_keys = inverse_keys[idcs]
     inverse_vals = inverse_vals[idcs]
 
-    inverse_list = [Tuple{Int64, Vec3}[] for _ in 1:nsites_new]
+    inverse_list = [InverseData[] for _ in 1:nsites_new]
     for (n, key) in enumerate(inverse_keys)
         new_site, _ = key  # `key` is a tuple (global_site, local_site_in_unit)
         push!(inverse_list[new_site], inverse_vals[n])
@@ -105,9 +118,9 @@ function expand_crystal(contracted_crystal, contraction_info)
     contracted_positions = contracted_crystal.positions
     nsites_expanded = length(forward) 
     expanded_positions = [Vec3(0, 0, 0) for _ in 1:nsites_expanded]
-    for (contracted_idx, contracted_sites) in enumerate(inverse)
-        for (original_site, offset) in contracted_sites
-            expanded_positions[original_site] = contracted_positions[contracted_idx] + offset
+    for (contracted_idx, original_site_data) in enumerate(inverse)
+        for (; site, offset) in original_site_data
+            expanded_positions[site] = contracted_positions[contracted_idx] + offset
         end
     end
     Crystal(contracted_crystal.latvecs, expanded_positions)
@@ -116,8 +129,8 @@ end
 function contracted_Ns(sys_original, contracted_cryst, contraction_info)
     Ns = [Int64[] for _ in 1:natoms(contracted_cryst)] 
     for (n, contracted_sites) in enumerate(contraction_info.inverse)
-        for (original_site, _) in contracted_sites
-            push!(Ns[n], sys_original.Ns[original_site])
+        for (; site) in contracted_sites
+            push!(Ns[n], sys_original.Ns[site])
         end
     end
     Ns
@@ -140,7 +153,7 @@ end
 
 
 # Pull out original indices of sites in entangled unit
-sites_in_unit(contraction_info, i) = [site[1] for site in contraction_info.inverse[i]] 
+sites_in_unit(contraction_info, i) = [inverse_data.site for inverse_data in contraction_info.inverse[i]] 
 
 # List of all pair-wise bonds in a unit.
 function bonds_in_unit(contraction_info, i)
@@ -178,6 +191,8 @@ function contract_system(sys::System{M}, units) where M
 
     # For each contracted site, scan original interactions and reconstruct as necessary.
     for (contracted_site, N) in zip(1:natoms(contracted_crystal), Ns_contracted)
+
+        ## TODO: Add Zeeman term
 
         ## Onsite portion of interaction 
         relevant_sites = sites_in_unit(contraction_info, contracted_site)
@@ -324,22 +339,69 @@ end
 function expand_contracted_system!(sys, sys_contracted, contraction_info)
     expectation(op, Z) = real(Z' * op * Z)
 
-    for site in Sunny.eachsite(sys_contracted)
-        i, j, k, n = site.I
+    for contracted_site in Sunny.eachsite(sys_contracted)
+        i, j, k, n = contracted_site.I
         Ns_local = contracted_Ns(sys, sys_contracted.crystal, contraction_info)
         Ns = Ns_local[n]
-        # for (m, _) in contraction_info.inverse[n]
-        for (m, (original_site, _)) in enumerate(contraction_info.inverse[n])
+
+        # This iteration will be slow because it's on the last index...
+        for (m, (; site)) in enumerate(contraction_info.inverse[n])
             S = spin_matrices((Ns[m]-1)/2)
             Sx = local_op_to_unit_op(S[1], m, Ns)
             Sy = local_op_to_unit_op(S[2], m, Ns)
             Sz = local_op_to_unit_op(S[3], m, Ns)
             dipole = Sunny.Vec3(
-                expectation(Sx, sys_contracted.coherents[site]),
-                expectation(Sy, sys_contracted.coherents[site]),
-                expectation(Sz, sys_contracted.coherents[site]),
+                expectation(Sx, sys_contracted.coherents[contracted_site]),
+                expectation(Sy, sys_contracted.coherents[contracted_site]),
+                expectation(Sz, sys_contracted.coherents[contracted_site]),
             )
-            sys.dipoles[i, j, k, original_site] = dipole
+            sys.dipoles[i, j, k, site] = dipole
         end
     end
 end
+
+function local_spins_in_unit(contraction_info)
+    observables = [SMatrix{N, N, ComplexF64, N*N}[] for _ in 1:length(contraction_info.inverse)]
+    Ns_unit = contracted_Ns(sys, sys_contracted.crystal, contraction_info)
+
+    for (i, original_site_data) in enumerate(contraction_info.inverse)
+        Ns = Ns_unit[i]
+        for inverse_data in original_site_data
+            local_op_to_unit_op(op, m, Ns)
+            push!(observables[i], ...)
+        end
+    end
+end
+
+function expand_contracted_system2!(sys, sys_contracted::System{N}, contraction_info) where N
+    expectation(op, Z) = real(Z' * op * Z)
+
+
+
+
+    for contracted_site in Sunny.eachsite(sys_contracted)
+        i, j, k, n = contracted_site.I
+        Ns_local = contracted_Ns(sys, sys_contracted.crystal, contraction_info)
+        Ns = Ns_local[n]
+
+        # This iteration will be slow because it's on the last index...
+        for (m, (; site)) in enumerate(contraction_info.inverse[n])
+            S = spin_matrices((Ns[m]-1)/2)
+            Sx = local_op_to_unit_op(S[1], m, Ns)
+            Sy = local_op_to_unit_op(S[2], m, Ns)
+            Sz = local_op_to_unit_op(S[3], m, Ns)
+            dipole = Sunny.Vec3(
+                expectation(Sx, sys_contracted.coherents[contracted_site]),
+                expectation(Sy, sys_contracted.coherents[contracted_site]),
+                expectation(Sz, sys_contracted.coherents[contracted_site]),
+            )
+            sys.dipoles[i, j, k, site] = dipole
+        end
+    end
+end
+
+
+# Fill a buffer with general expectation values
+# function expanded_spin_expectations!(buf, observables, sys_contracted, contraction_info)
+#     
+# end
