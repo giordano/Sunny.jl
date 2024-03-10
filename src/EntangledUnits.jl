@@ -360,7 +360,7 @@ function entangle_system(sys::System{M}, units) where M
 end
 
 
-# Make optimized version, also generalize to work on list of observables
+# Make optimized version (both loop order and possibly generated functions).
 function expected_dipoles_of_entangled_system!(sys, sys_entangled, entanglement_data)
     (; contraction_info, Ns_unit) = entanglement_data
     expectation(op, Z) = real(Z' * op * Z)
