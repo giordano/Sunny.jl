@@ -259,7 +259,7 @@ function pair_coupling_into_bond_operator_between_units(pc, sys, contraction_inf
     # Add general part
     for (A, B) in general.data
         bond_operator += kron( local_op_to_unit_op(A, unitsub1, Ns1), I(Ns_contracted[unit1]) ) * 
-                            kron( I(Ns_contracted[unit2]), local_op_to_unit_op(B, unitsub2, Ns2) )
+                         kron( I(Ns_contracted[unit2]), local_op_to_unit_op(B, unitsub2, Ns2) )
     end
 
     return (; newbond, bond_operator)
