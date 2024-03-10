@@ -284,16 +284,25 @@ function entangle_system(sys::System{M}, units) where M
     spin_infos = [SpinInfo(i; S=(N-1)/2, g=1.0) for (i, N) in enumerate(Ns_contracted)]  # TODO: Decisions about g-factor 
     sys_entangled = System(contracted_crystal, dims, spin_infos, :SUN)
 
+    # TODO: Extend to inhomogenous systems
     # For each contracted site, scan original interactions and reconstruct as necessary.
     new_pair_data = Tuple{Bond, Matrix{ComplexF64}}[]
     for (contracted_site, N) in zip(1:natoms(contracted_crystal), Ns_contracted)
 
-
         ## Onsite portion of interaction 
-        ## TODO: Add Zeeman term
         relevant_sites = sites_in_unit(contraction_info, contracted_site)
-        original_interactions = sys.interactions_union[relevant_sites] 
         unit_operator = zeros(ComplexF64, N, N)
+
+        # Zeeman term -- TODO: generalize to inhomogenous case -- here assumes field is applied identically on a per-unit-cell basis
+        for site in relevant_sites
+            unit_index = contraction_info.forward[site][2]
+            S = spin_matrices((Ns_local[contracted_site][unit_index] - 1)/2)
+            B = sys.units.μB * (sys.gs[1, 1, 1, site]' * sys.extfield[1, 1, 1, site])
+            unit_operator -= local_op_to_unit_op(B' * S, unit_index, Ns_local[contracted_site])
+        end
+
+        # Pair interactions that become within-unit interactions
+        original_interactions = sys.interactions_union[relevant_sites] 
         for (site, interaction) in zip(relevant_sites, original_interactions)
             onsite_original = interaction.onsite
             unit_index = contraction_info.forward[site][2]
@@ -352,7 +361,7 @@ end
 
 # Make optimized version, also generalize to work on list of observables
 function expected_dipoles_of_entangled_system!(sys, sys_entangled, entanglement_data)
-    (; contraction_info) = entanglement_data
+    (; contraction_info, Ns_unit) = entanglement_data
     expectation(op, Z) = real(Z' * op * Z)
 
     for contracted_site in Sunny.eachsite(sys_entangled)

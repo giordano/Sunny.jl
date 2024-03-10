@@ -39,9 +39,20 @@ struct EntangledSpinWaveTheory # Could just expand union above, but type now ava
     observables    :: ObservableInfo
 end
 
-function EntangledSpinWaveTheory(sys::System{N}, ci::CrystalContractionInfo; energy_ϵ::Float64=1e-8, observables=nothing, correlations=nothing, apply_g = true) where N
+function EntangledSpinWaveTheory(sys::System{N}, entanglement_data::EntanglementData; energy_ϵ::Float64=1e-8, observables=nothing, correlations=nothing, apply_g = true) where N
     if !isnothing(sys.ewald)
         error("SpinWaveTheory does not yet support long-range dipole-dipole interactions.")
+    end
+
+    # Could move this to parse observables...
+    if isnothing(observables)
+        N_original = entanglement_data.Ns_unit[1][1]
+        S = spin_matrices((N_original-1)/2)
+        observables = [
+            :Sx => S[1],
+            :Sy => S[2],
+            :Sz => S[3],
+        ]
     end
 
     cellsize_mag = cell_shape(sys) * diagm(Vec3(sys.latsize))
@@ -49,9 +60,15 @@ function EntangledSpinWaveTheory(sys::System{N}, ci::CrystalContractionInfo; ene
 
     # Rotate local operators to quantization axis
     obs = parse_observables(N; observables, correlations, g = apply_g ? sys.gs : nothing)
-    data = swt_data_entangled(sys, ci, obs)
+    data = swt_data_entangled(sys, entanglement_data, obs)
 
-    return EntangledSpinWaveTheory(entangled_sys, data, energy_ϵ, obs)
+    return EntangledSpinWaveTheory(sys, data, energy_ϵ, obs)
+end
+
+function Base.show(io::IO, ::MIME"text/plain", swt::EntangledSpinWaveTheory)
+    printstyled(io, "SpinWaveTheory\n"; bold=true, color=:underline)
+    println(io, "Entangled units in magnetic supercell: $(natoms(swt.sys.crystal))")
+    show(io, MIME("text/plain"), swt.observables)
 end
 
 function SpinWaveTheory(sys::System{N}; energy_ϵ::Float64=1e-8, observables=nothing, correlations=nothing, apply_g = true) where N
@@ -87,6 +104,8 @@ function nbands(swt::SpinWaveTheory)
     nflavors = sys.mode == :SUN ? sys.Ns[1]-1 : 1
     return nflavors * natoms(sys.crystal)
 end
+
+nbands(swt::EntangledSpinWaveTheory) = (swt.sys.Ns[1]-1)  * natoms(swt.sys.crystal)
 
 # Given q in reciprocal lattice units (RLU) for the original crystal, return a
 # q_reshaped in RLU for the possibly-reshaped crystal.
@@ -212,7 +231,7 @@ function swt_data_entangled(sys::System{N}, entanglement_data::EntanglementData,
     @assert allequal(sites_per_unit) "All units must have the same number of interior sites"
     sites_per_unit = sites_per_unit[1]
     @assert allequal(Ns_contracted) "All units must have the same dimension local Hilbert space"
-    @assert Ns_contracted[1] == N "Unit dimension inconsistent with system"  # Sanity check. This should never happen. Delete later.
+    @assert Ns_contracted[1] == N "Unit dimension inconsistent with system"  # Sanity check. This should never happen. 
 
     # Preallocate buffers for local unitaries and observables.
     local_unitaries = zeros(ComplexF64, N, N, nunits)
@@ -233,7 +252,7 @@ function swt_data_entangled(sys::System{N}, entanglement_data::EntanglementData,
         # Rotate observables into local reference frames
         for k = 1:num_observables(obs)
             A = obs.observables[k]
-            for local_site in 1:length(contraction_info.inverse[unit])
+            for local_site in 1:sites_per_unit
                 A_prod = local_op_to_unit_op(A, local_site, Ns_unit[unit])
                 observables_localized_all[:, :, local_site, k, unit] = Hermitian(U' * convert(Matrix, A_prod) * U)
             end
@@ -262,7 +281,7 @@ function swt_data_entangled(sys::System{N}, entanglement_data::EntanglementData,
         int.pair = pair_new
     end
 
-    return SWTDataUnits(
+    return SWTDataEntangled(
         local_unitaries,
         observables_localized_all,
         observable_buf,
