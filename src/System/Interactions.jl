@@ -8,7 +8,7 @@ end
 
 # Warn up to `OverrideWarningMax` times about overriding a coupling
 OverrideWarningCnt::Int = 0
-OverrideWarningMax::Int = 5
+OverrideWarningMax::Float64 = Inf
 function warn_coupling_override(str)
     global OverrideWarningCnt, OverrideWarningMax
     OverrideWarningCnt < OverrideWarningMax && @info str
