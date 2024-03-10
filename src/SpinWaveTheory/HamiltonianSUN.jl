@@ -63,14 +63,7 @@ function swt_pair_coupling!(H, Ai, Bj, swt, phase, bond)
 end
 
 
-function swt_hamiltonian_SUN!(H::Matrix{ComplexF64}, eswt::EntangledSpinWaveTheory, q_reshaped::Vec3)
-    swt_hamiltonian_SUN!(H, eswt.entangled_sys.sys, eswt.data, q_reshaped::Vec3)
-end
-function swt_hamiltonian_SUN!(H::Matrix{ComplexF64}, swt::SpinWaveTheory, q_reshaped::Vec3)
-    swt_hamiltonian_SUN!(H, swt.sys, swt, q_reshaped::Vec3)
-end
-
-function swt_hamiltonian_SUN!(H::Matrix{ComplexF64}, sys, swt, q_reshaped::Vec3)
+function swt_hamiltonian_SUN!(H::Matrix{ComplexF64}, swt, q_reshaped::Vec3)
 
     L = nbands(swt)    # Number of quasiparticle bands
     @assert size(H) == (2L, 2L)
@@ -79,7 +72,7 @@ function swt_hamiltonian_SUN!(H::Matrix{ComplexF64}, sys, swt, q_reshaped::Vec3)
     H .= 0
 
     # Add pair interactions that use explicit bases
-    for (atom, int) in enumerate(sys.interactions_union)
+    for (atom, int) in enumerate(swt.sys.interactions_union)
 
         # Set the onsite term
         swt_onsite_coupling!(H, int.onsite, swt, atom)

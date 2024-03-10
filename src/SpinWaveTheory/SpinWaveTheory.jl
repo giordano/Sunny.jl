@@ -32,15 +32,14 @@ struct SpinWaveTheory
     observables  :: ObservableInfo
 end
 
-struct EntangledSpinWaveTheory
-    entangled_sys  :: EntangledSystem
+struct EntangledSpinWaveTheory # Could just expand union above, but type now available for dispatch
+    sys            :: System
     data           :: SWTDataEntangled
     energy_ϵ       :: Float64
     observables    :: ObservableInfo
 end
 
-function EntangledSpinWaveTheory(entangled_sys::EntangledSystem{N}; energy_ϵ::Float64=1e-8, observables=nothing, correlations=nothing, apply_g = true) where N
-    sys = entangled_sys.sys
+function EntangledSpinWaveTheory(sys::System{N}, ci::CrystalContractionInfo; energy_ϵ::Float64=1e-8, observables=nothing, correlations=nothing, apply_g = true) where N
     if !isnothing(sys.ewald)
         error("SpinWaveTheory does not yet support long-range dipole-dipole interactions.")
     end
@@ -49,8 +48,8 @@ function EntangledSpinWaveTheory(entangled_sys::EntangledSystem{N}; energy_ϵ::F
     sys = reshape_supercell_aux(sys, (1,1,1), cellsize_mag)
 
     # Rotate local operators to quantization axis
-    obs = parse_observables(N; observables, correlations=nothing, g = apply_g ? sys.gs : nothing)
-    data = swt_data(sys, obs)
+    obs = parse_observables(N; observables, correlations, g = apply_g ? sys.gs : nothing)
+    data = swt_data_entangled(sys, ci, obs)
 
     return EntangledSpinWaveTheory(entangled_sys, data, energy_ϵ, obs)
 end
@@ -71,7 +70,7 @@ function SpinWaveTheory(sys::System{N}; energy_ϵ::Float64=1e-8, observables=not
     sys = reshape_supercell_aux(sys, (1,1,1), cellsize_mag)
 
     # Rotate local operators to quantization axis
-    obs = parse_observables(N; observables, correlations=nothing, g = apply_g ? sys.gs : nothing)
+    obs = parse_observables(N; observables, correlations, g = apply_g ? sys.gs : nothing)
     data = swt_data(sys, obs)
 
     return SpinWaveTheory(sys, data, energy_ϵ, obs)
@@ -201,16 +200,15 @@ end
 
 
 # obs are observables _given in terms of `sys_original`_
-function swt_data(entangled_sys::EntangledSystem{N}, obs) where N
-    (; sys, sys_origin, ci) = entangled_sys
+function swt_data_entangled(sys::System{N}, entanglement_data::EntanglementData, obs) where N
+    (; contraction_info, Ns_unit) = entanglement_data 
     
     # Calculate transformation matrices into local reference frames
     nunits = natoms(sys.crystal)
 
     # Check to make sure all "units" are the same -- this can be generalized later.
-    sites_per_unit = [length(info) for info in ci.inverse]
-    Ns_all = Ns_in_units(sys_origin, ci)
-    Ns_contracted = map(Ns -> prod(Ns), Ns_all)
+    sites_per_unit = [length(info) for info in contraction_info.inverse]
+    Ns_contracted = map(Ns -> prod(Ns), Ns_unit)
     @assert allequal(sites_per_unit) "All units must have the same number of interior sites"
     sites_per_unit = sites_per_unit[1]
     @assert allequal(Ns_contracted) "All units must have the same dimension local Hilbert space"
@@ -235,8 +233,8 @@ function swt_data(entangled_sys::EntangledSystem{N}, obs) where N
         # Rotate observables into local reference frames
         for k = 1:num_observables(obs)
             A = obs.observables[k]
-            for local_site in 1:length(ci.inverse[unit])
-                A_prod = local_op_to_unit_op(A, local_site, Ns_all[unit])
+            for local_site in 1:length(contraction_info.inverse[unit])
+                A_prod = local_op_to_unit_op(A, local_site, Ns_unit[unit])
                 observables_localized_all[:, :, local_site, k, unit] = Hermitian(U' * convert(Matrix, A_prod) * U)
             end
         end

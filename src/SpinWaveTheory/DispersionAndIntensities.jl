@@ -409,14 +409,14 @@ or a function of both the energy transfer `ω` and of `Δω`, e.g.:
 
 The integral of a properly normalized kernel function over all `Δω` is one.
 """
-function intensity_formula(f::Function, swt::EntangledSpinWaveTheory, corr_ix::AbstractVector{Int64}; 
+function intensity_formula(f::Function, swt::EntangledSpinWaveTheory, entanglement_data, corr_ix::AbstractVector{Int64}; 
     kernel::Union{Nothing, Function},
     return_type=Float64, 
     string_formula="f(Q,ω,S{α,β}[ix_q,ix_ω])", 
     formfactors=nothing
 )
-    (; entangled_sys, data, observables) = swt
-    (; sys, ci) = entangled_sys
+    (; sys, data, observables) = swt
+    (; contraction_info) = entanglement_data
 
     nunits, N = length(sys.dipoles), sys.Ns[1] # number of magnetic atoms and dimension of Hilbert space
     nmodes = nunits * (N-1) 
@@ -465,7 +465,7 @@ function intensity_formula(f::Function, swt::EntangledSpinWaveTheory, corr_ix::A
         # `intensities_*` functions defined in LinearSpinWaveIntensities.jl.
         # Separately, the functions calc_intensity for formulas associated with
         # SampledCorrelations will receive `q_absolute` in absolute units.
-        (; sys) = swt.entangled_sys.sys
+        (; sys) = swt
         q_reshaped = to_reshaped_rlu(sys, q)
         q_absolute = sys.crystal.recipvecs * q_reshaped
 
@@ -492,7 +492,7 @@ function intensity_formula(f::Function, swt::EntangledSpinWaveTheory, corr_ix::A
             Avec = zeros(ComplexF64, num_observables(observables))
             (; observable_buf, observable_operators_full) = data
             for i = 1:nunits
-                inverse_infos = ci.inverse[i]
+                inverse_infos = contraction_info.inverse[i]
                 for μ = 1:num_observables(observables)
 
                     # Construct q-dependent observable
@@ -513,7 +513,7 @@ function intensity_formula(f::Function, swt::EntangledSpinWaveTheory, corr_ix::A
 
             # Calculate correlations
             corrs = Vector{ComplexF64}(undef,num_correlations(observables))
-            for (ci,i) in observables.correlations
+            for (ci, i) in observables.correlations
                 (α,β) = ci.I
                 corrs[i] = Avec[α] * conj(Avec[β])
             end

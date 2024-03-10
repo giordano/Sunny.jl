@@ -19,23 +19,14 @@ end
 # location in the original crystal. The length of these sublists corresponds to
 # the number of sites within the entangled unit.
 struct CrystalContractionInfo
-    forward :: Vector{Tuple{Int64, Int64}}          # Original site index -> full unit index (contracted crystal site index and unit subindex)
-    inverse :: Vector{Vector{InverseData}}   # List ordered according to contracted crystal sites. Each element is itself a list containing original crystal site indices and corresponding offset information 
+    forward :: Vector{Tuple{Int64, Int64}}  # Original site index -> full unit index (contracted crystal site index and unit subindex)
+    inverse :: Vector{Vector{InverseData}}  # List ordered according to contracted crystal sites. Each element is itself a list containing original crystal site indices and corresponding offset information 
 end
 
-struct EntangledSystem{N}
-    sys         :: System{N}
-    sys_origin  :: System
-    ci          :: CrystalContractionInfo
-    Ns_internal :: Vector{Vector{Int64}}
+struct EntanglementData
+    contraction_info :: CrystalContractionInfo
+    Ns_unit          :: Vector{Vector{Int64}}   # This eliminates need to carry original system around in many places
 end
-
-function EntangledSystem(sys::System{N}, units) where N
-    sys_contracted, contraction_info = contract_system(sys, units)
-    Ns_internal = Ns_in_units(sys, contraction_info)
-    EntangledSystem(sys_contracted, sys, contraction_info, Ns_internal)
-end
-
 
 # Takes a crystal and a list of integer tuples. The tuples indicate which sites
 # in the original crystal are to be grouped, i.e., contracted into a single site
@@ -274,11 +265,11 @@ function pair_coupling_into_bond_operator_between_units(pc, sys, contraction_inf
     return (; newbond, bond_operator)
 end
 
-function contract_system(::System{0}, _) 
+function entangle_system(::System{0}, _) 
     error("Cannot contract a dipole system.")
 end
 
-function contract_system(sys::System{M}, units) where M
+function entangle_system(sys::System{M}, units) where M
 
     # Construct contracted crystal
     contracted_crystal, contraction_info = contract_crystal(sys.crystal, units)
@@ -291,7 +282,7 @@ function contract_system(sys::System{M}, units) where M
     # Construct empty contracted system
     dims = size(sys.dipoles)[1:3]
     spin_infos = [SpinInfo(i; S=(N-1)/2, g=1.0) for (i, N) in enumerate(Ns_contracted)]  # TODO: Decisions about g-factor 
-    sys_contracted = System(contracted_crystal, dims, spin_infos, :SUN)
+    sys_entangled = System(contracted_crystal, dims, spin_infos, :SUN)
 
     # For each contracted site, scan original interactions and reconstruct as necessary.
     new_pair_data = Tuple{Bond, Matrix{ComplexF64}}[]
@@ -302,11 +293,11 @@ function contract_system(sys::System{M}, units) where M
         ## TODO: Add Zeeman term
         relevant_sites = sites_in_unit(contraction_info, contracted_site)
         original_interactions = sys.interactions_union[relevant_sites] 
-        onsite_contracted = zeros(ComplexF64, N, N)
+        unit_operator = zeros(ComplexF64, N, N)
         for (site, interaction) in zip(relevant_sites, original_interactions)
             onsite_original = interaction.onsite
             unit_index = contraction_info.forward[site][2]
-            onsite_contracted += local_op_to_unit_op(onsite_original, unit_index, Ns_local[contracted_site])
+            unit_operator += local_op_to_unit_op(onsite_original, unit_index, Ns_local[contracted_site])
         end
 
         # Sort all PairCouplings in couplings that will be within a unit and couplings that will be between units
@@ -323,9 +314,9 @@ function contract_system(sys::System{M}, units) where M
 
         # Convert intra-unit PairCouplings to onsite couplings
         for pc in pcs_intra
-            accum_pair_coupling_into_bond_operator_in_unit!(onsite_contracted, pc, sys, contracted_site, contraction_info)
+            accum_pair_coupling_into_bond_operator_in_unit!(unit_operator, pc, sys, contracted_site, contraction_info)
         end
-        set_onsite_coupling!(sys_contracted, onsite_contracted, contracted_site)
+        set_onsite_coupling!(sys_entangled, unit_operator, contracted_site)
 
         ## Convert inter-unit PairCouplings into new pair couplings
         for pc in pcs_inter
@@ -351,24 +342,22 @@ function contract_system(sys::System{M}, units) where M
     for bond in exemplars
         relevant_interactions = filter(data -> data[1] == bond, new_pair_data)
         bond_operator = sum(data[2] for data in relevant_interactions)
-        set_pair_coupling!(sys_contracted, bond_operator, bond)
+        set_pair_coupling!(sys_entangled, bond_operator, bond)
     end
 
-    return (; sys_contracted, contraction_info)
+    entanglement_data = EntanglementData(contraction_info, Ns_local)
+    return (; sys_entangled, entanglement_data)
 end
 
 
-
-
-
 # Make optimized version, also generalize to work on list of observables
-function expand_contracted_system!(sys, sys_contracted, contraction_info)
+function expected_dipoles_of_entangled_system!(sys, sys_entangled, entanglement_data)
+    (; contraction_info) = entanglement_data
     expectation(op, Z) = real(Z' * op * Z)
 
-    for contracted_site in Sunny.eachsite(sys_contracted)
+    for contracted_site in Sunny.eachsite(sys_entangled)
         i, j, k, n = contracted_site.I
-        Ns_local = Ns_in_units(sys, contraction_info)
-        Ns = Ns_local[n]
+        Ns = Ns_unit[n]
 
         # This iteration will be slow because it's on the last index...
         for (m, (; site)) in enumerate(contraction_info.inverse[n])
@@ -377,11 +366,14 @@ function expand_contracted_system!(sys, sys_contracted, contraction_info)
             Sy = local_op_to_unit_op(S[2], m, Ns)
             Sz = local_op_to_unit_op(S[3], m, Ns)
             dipole = Sunny.Vec3(
-                expectation(Sx, sys_contracted.coherents[contracted_site]),
-                expectation(Sy, sys_contracted.coherents[contracted_site]),
-                expectation(Sz, sys_contracted.coherents[contracted_site]),
+                expectation(Sx, sys_entangled.coherents[contracted_site]),
+                expectation(Sy, sys_entangled.coherents[contracted_site]),
+                expectation(Sz, sys_entangled.coherents[contracted_site]),
             )
             sys.dipoles[i, j, k, site] = dipole
         end
     end
 end
+
+# TODO: Write this function:
+# function expected_observables_of_entangled_system!(sys, observables, sys_entangled, entanglement_data)

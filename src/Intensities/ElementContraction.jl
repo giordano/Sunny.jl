@@ -172,13 +172,13 @@ function intensity_formula(swt::SpinWaveTheory, contractor::Contraction{T}; kwar
     end
 end
 
-function intensity_formula(swt::EntangledSpinWaveTheory, mode::Symbol, contraction_info; kwargs...)
+function intensity_formula(swt::EntangledSpinWaveTheory, entanglement_data, mode::Symbol; kwargs...)
     contractor, string_formula = contractor_from_mode(swt, mode)
-    intensity_formula(swt, contractor, contraction_info; string_formula, kwargs...)
+    intensity_formula(swt, entanglement_data, contractor; string_formula, kwargs...)
 end
 
-function intensity_formula(swt::EntangledSpinWaveTheory, contractor::Contraction{T}, contraction_info; kwargs...) where T
-    intensity_formula(swt, required_correlations(contractor), contraction_info; return_type = T,kwargs...) do k, _, correlations
+function intensity_formula(swt::EntangledSpinWaveTheory, entanglement_data, contractor::Contraction{T}; kwargs...) where T
+    intensity_formula(swt, entanglement_data, required_correlations(contractor); return_type=T, kwargs...) do k, _, correlations
         intensity = contract(correlations, k, contractor)
     end
 end

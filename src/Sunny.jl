@@ -65,7 +65,7 @@ include("Reshaping.jl")
 export reshape_supercell, resize_supercell, repeat_periodically
 
 include("EntangledUnits.jl")
-export contract_crystal, contract_system, expand_contracted_system!, EntangledSystem
+export contract_crystal, entangle_system, expected_dipoles_of_entangled_system!
 
 include("Integrators.jl")
 export Langevin, ImplicitMidpoint, step!, suggest_timestep
