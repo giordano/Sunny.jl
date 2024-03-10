@@ -12,8 +12,13 @@
 # location in the original crystal. The length of these sublists corresponds to
 # the number of sites within the entangled unit.
 struct CrystalContractionInfo
-    forward :: Vector{Tuple{Int64, Int64}}
-    inverse :: Vector{Vector{Tuple{Int64, Vec3}}}
+    forward :: Vector{Tuple{Int64, Int64}}          # Original site index -> full unit index (contracted crystal site index and unit subindex)
+    inverse :: Vector{Vector{Tuple{Int64, Vec3}}}   # 
+end
+
+struct SiteContractionInfo
+    Ns_local :: Vector{Vector{Int64}}   # List length of contracted sites, each element and ordered list of Ns.
+                                        # Needed for constructing local operators.
 end
 
 function contract_crystal(crystal, units)
@@ -96,6 +101,7 @@ function contract_crystal(crystal, units)
     return new_crystal, contraction_info
 end
 
+# Reconstruct original crystal from contracted Crystal and a CrystalContractionInfo
 function expand_crystal(contracted_crystal, contraction_info)
     (; forward, inverse) = contraction_info
     contracted_positions = contracted_crystal.positions
@@ -109,13 +115,85 @@ function expand_crystal(contracted_crystal, contraction_info)
     Crystal(contracted_crystal.latvecs, expanded_positions)
 end
 
+function contracted_Ns(sys, contracted_cryst, contraction_info)
+    Ns = [Int64[] for _ in 1:natoms(contracted_cryst)] 
+    for contracted_sites in contraction_info.inverse
+        for (original_site, _) in contracted_sites
+            push!(Ns[], sys.Ns[original_site])
+        end
+    end
+    Ns
+end
+
+function to_local_product_space(op, op_index, Ns)
+    @assert size(op, 1) == Ns[op_index] "Given operator not consistent with dimension of local Hilbert space"
+    nsites = length(Ns) # Number of sites in the unit.
+
+    # If there is only one site in the unit, simply return the original operator.
+    (nsites == 1) && (return op)
+
+    # Otherwise generate the appropriate tensor product.
+    ops = [unit_index == op_index ? op : I(Ns[unit_index]) for unit_index in 1:nsites]
+
+    return reduce(kron, ops)
+end
+
+# Pull out original indices of sites in entangled unit
+sites_in_unit(contraction_info, i) = [site[1] for site in contraction_info.inverse[i]] 
+
+# List of all pair-wise bonds in a unit.
+function bonds_in_unit(contraction_info, i)
+    sites = sites_in_unit(contraction_info, i)
+    nsites = length(sites)
+    bonds = Bond[]
+    for i in 1:nsites, j in i+1:nsites
+        push!(bonds, Bond(i, j, [0, 0, 0]))
+    end
+    return bonds
+end
 
 # unit_list should be an array of tuples
 function contract_system(sys, units)
     # Construct contracted crystal
     contracted_cryst, contraction_info = contract_crystal(sys.crystal, units)
 
-    # Iterate through interactions_union and construct new interactions
 
-    
+    # Iterate through interactions_union and construct new interactions
+    Ns_local = contracted_Ns(sys, contracted_cryst, contraction_info)
+    Ns_contracted = map(Ns -> prod(Ns), Ns_local)
+
+    # Do onsite interactions first. Iterate through sites of new crystal, then iterate
+    # through interactions union 
+
+    # interactions_contracted = Interactions[]
+    interactions_contracted = []
+
+    for (contracted_site, N) in zip(1:natoms(contracted_cryst), Ns_contracted)
+        ## Onsite
+        # Find original site indices relevant to contracted site.
+        original_sites = findall(x -> x[1] == contracted_site, contraction_info.forward) # First index of tuple is original site
+        original_interactions = sys.interactions_union[original_sites] 
+        onsite_contracted = zeros(ComplexF64, N, N)
+        for (n, interaction) in enumerate(original_interactions)
+            onsite_original = interaction.onsite        # TODO: convert if Stevens expansion
+            unit_index = contraction_info.forward[n][2]
+            onsite_contracted += to_local_product_space(onsite_original, unit_index, Ns_local[contracted_site])
+        end
+
+        ## Pairwise within unit
+        # Find relevant interactions (search bonds, etc.)
+        # What to do with isculled? Just ignore and pick one site
+        # Construct possible bonds within unit
+        sites = sites_in_unit(contraction_info, contracted_site)
+        
+
+        onsite_pairs = zeros(ComplexF64, N, N)
+
+        ## Pairwise between units
+        unit_pairs = PairCoupling[]
+
+        interaction = Interaction()
+    end
+
+    return interactions_contracted, Ns_contracted 
 end
