@@ -198,23 +198,23 @@ function accum_pair_coupling_into_bond_operator_in_unit!(op, pc, sys, contracted
     Nj = sys.Ns[1, 1, 1, j] 
 
     # Add scalar part
-    op += scalar*I_unit
+    op .+= scalar*I_unit
 
     # Add bilinear part
     J = bilin isa Float64 ? bilin*I(3) : bilin
     Si = [local_op_to_unit_op(Sa, i_unit, Ns_unit) for Sa in spin_matrices((Ni-1)/2)]
     Sj = [local_op_to_unit_op(Sb, j_unit, Ns_unit) for Sb in spin_matrices((Nj-1)/2)]
-    op += Si' * J * Sj
+    op .+= Si' * J * Sj
 
     # Add biquadratic part
     K = biquad isa Float64 ? diagm(biquad * Sunny.scalar_biquad_metric) : biquad
     Oi = [local_op_to_unit_op(Oa, i_unit, Ns_unit) for Oa in stevens_matrices_of_dim(2; N=Ni)]
     Oj = [local_op_to_unit_op(Ob, j_unit, Ns_unit) for Ob in stevens_matrices_of_dim(2; N=Nj)]
-    op += Oi' * K * Oj
+    op .+= Oi' * K * Oj
 
     # Add general part
     for (A, B) in general.data
-        op += local_op_to_unit_op(A, i_unit, Ns_unit) * local_op_to_unit_op(B, j_unit, Ns_unit)
+        op .+= local_op_to_unit_op(A, i_unit, Ns_unit) * local_op_to_unit_op(B, j_unit, Ns_unit)
     end
 end
 
@@ -293,16 +293,12 @@ function contract_system(sys::System{M}, units) where M
         # Sort all PairCouplings in couplings that will be within a unit and couplings that will be between units
         pcs_intra = PairCoupling[] 
         pcs_inter = PairCoupling[]
-        for interaction in original_interactions
-            for pc in interaction.pair
-                (; isculled, bond) = pc
-                if !isculled
-                    if bond_is_in_unit(bond, contraction_info)
-                        push!(pcs_intra, pc)
-                    else
-                        push!(pcs_inter, pc)
-                    end
-                end
+        for interaction in original_interactions, pc in interaction.pair
+            (; bond) = pc
+            if bond_is_in_unit(bond, contraction_info)
+                push!(pcs_intra, pc)
+            else
+                push!(pcs_inter, pc)
             end
         end
 
@@ -319,46 +315,69 @@ function contract_system(sys::System{M}, units) where M
         end
     end
 
-    # Finally combine interactions on identical bonds and set them in the system
-    unique_bonds = unique([data[1] for data in new_pair_data])
-    # for unique_bond in unique_bonds
-    #     bond_data = filter(data -> data[1] == unique_bond, new_pair_data)
-    #     bond_operator = sum(data[2] for data in bond_data)
-    #     println("Setting bond: ", unique_bond)
-    #     set_pair_coupling!(sys_contracted, bond_operator, unique_bond)
-    # end
-
-
-    grouped_bonds = []
-    for bond in unique_bonds 
-        bonds = Bond[]
-        push!(bonds, bond)
-        mirror_bond = Bond(bond.i, bond.j, -1*bond.n)
-        idx = findfirst(==(mirror_bond), unique_bonds)
-        if !isnothing(idx)
-            push!(bonds, unique_bonds[idx])
-            deleteat!(unique_bonds, idx)
+    # Now have list of bonds and bond operators. First we must find individual
+    # exemplars of each symmetry class of bonds in terms of the *new* crystal.
+    all_bonds_with_interactions = [data[1] for data in new_pair_data]
+    exemplars = Bond[]
+    while length(all_bonds_with_interactions) > 0
+        exemplar = all_bonds_with_interactions[1]
+        all_bonds_with_interactions = filter(all_bonds_with_interactions) do bond
+            !is_related_by_symmetry(contracted_crystal, bond, exemplar)
         end
-        push!(grouped_bonds, bonds)
+        push!(exemplars, exemplar)
     end
 
-
-    for group in grouped_bonds
-        println("New group: ")
-        first_bond = group[1]
-        bond_data = filter(data -> data[1] == first_bond, new_pair_data)
-        bond_operator = sum(data[2] for data in bond_data)
-        if length(group) > 1
-            for bond in group[2:end] 
-                bond_data = filter(data -> data[1] == bond, new_pair_data)
-                bond_operator += sum(data[2] for data in bond_data)
-            end
-        end
-        set_pair_coupling!(sys_contracted, bond_operator, first_bond)
+    # We collected all bond_operators associated with a particular exemplar, sum
+    # them, and set the interaction
+    for bond in exemplars
+        relevant_interactions = filter(data -> data[1] == bond, new_pair_data)
+        bond_operator = sum(data[2] for data in relevant_interactions)
+        set_pair_coupling!(sys_contracted, bond_operator, bond)
     end
 
     return (; sys_contracted, contraction_info)
 end
+
+
+# # Finally combine interactions on identical bonds and set them in the system
+# unique_bonds = unique([data[1] for data in new_pair_data])
+# # for unique_bond in unique_bonds
+# #     bond_data = filter(data -> data[1] == unique_bond, new_pair_data)
+# #     bond_operator = sum(data[2] for data in bond_data)
+# #     println("Setting bond: ", unique_bond)
+# #     set_pair_coupling!(sys_contracted, bond_operator, unique_bond)
+# # end
+ 
+ 
+# unique_bonds = unique([data[1] for data in new_pair_data])
+# grouped_bonds = []
+# for bond in unique_bonds 
+#     bonds = Bond[]
+#     push!(bonds, bond)
+#     mirror_bond = Bond(bond.i, bond.j, -1*bond.n)
+#     idx = findfirst(==(mirror_bond), unique_bonds)
+#     if !isnothing(idx)
+#         push!(bonds, unique_bonds[idx])
+#         deleteat!(unique_bonds, idx)
+#     end
+#     push!(grouped_bonds, bonds)
+# end
+# 
+# 
+# for group in grouped_bonds
+#     println("New group: ")
+#     first_bond = group[1]
+#     bond_data = filter(data -> data[1] == first_bond, new_pair_data)
+#     bond_operator = sum(data[2] for data in bond_data)
+#     if length(group) > 1
+#         for bond in group[2:end] 
+#             bond_data = filter(data -> data[1] == bond, new_pair_data)
+#             bond_operator += sum(data[2] for data in bond_data)
+#         end
+#     end
+#     set_pair_coupling!(sys_contracted, bond_operator, first_bond)
+# end
+
 
 
 # Cleanup

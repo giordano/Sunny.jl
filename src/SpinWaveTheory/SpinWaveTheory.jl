@@ -216,8 +216,8 @@ function swt_data_sun_units(sys::System{N}, sys_original, contraction_info, obs)
 
     # Check to make sure all "units" are the same -- this can be generalized later.
     sites_per_unit = [length(info) for info in contraction_info.inverse]
-    Ns_in_units = Ns_in_units(sys_original, contraction_info)
-    Ns_contracted = map(Ns -> prod(Ns), Ns_in_units)
+    Ns_all = Ns_in_units(sys_original, contraction_info)
+    Ns_contracted = map(Ns -> prod(Ns), Ns_all)
     @assert allequal(sites_per_unit) "All units must have the same number of interior sites"
     sites_per_unit = sites_per_unit[1]
     @assert allequal(Ns_contracted) "All units must have the same dimension local Hilbert space"
@@ -243,7 +243,7 @@ function swt_data_sun_units(sys::System{N}, sys_original, contraction_info, obs)
         for k = 1:num_observables(obs)
             A = obs.observables[k]
             for local_site in 1:length(contraction_info.inverse[unit])
-                A_prod = local_op_to_unit_op(A, local_site, Ns_in_units[unit])
+                A_prod = local_op_to_unit_op(A, local_site, Ns_all[unit])
                 observables_localized_all[:, :, local_site, k, unit] = Hermitian(U' * convert(Matrix, A_prod) * U)
             end
         end
