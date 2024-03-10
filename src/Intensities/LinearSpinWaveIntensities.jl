@@ -30,7 +30,28 @@ function intensities_broadened(swt::SpinWaveTheory, ks, ωvals, formula)
 
     # Compute the intensity at each (k,ω) pair
     for kidx in CartesianIndices(ks)
-        intensity_as_function_of_ω = formula.calc_intensity(swt,ks[kidx])
+        intensity_as_function_of_ω = formula.calc_intensity(swt, ks[kidx])
+        is[kidx,:] .= intensity_as_function_of_ω(ωvals)
+    end
+
+    return is
+end
+
+function intensities_broadened(swt::SpinWaveTheoryUnits, ks, ωvals, formula)
+    ks = Vec3.(ks)
+    num_ω = length(ωvals)
+
+    return_type = typeof(formula).parameters[1]
+    if return_type <: BandStructure 
+        # This only happens if the user sets `kernel = delta_function_kernel`
+        error("intensities_broadened: Can't compute broadened intensities without a finite-width kernel.\nTry: intensity_formula(...; kernel = lorentzian(0.05))")
+    end
+
+    is = zeros(return_type, size(ks)..., num_ω)
+
+    # Compute the intensity at each (k,ω) pair
+    for kidx in CartesianIndices(ks)
+        intensity_as_function_of_ω = formula.calc_intensity(swt, ks[kidx])
         is[kidx,:] .= intensity_as_function_of_ω(ωvals)
     end
 

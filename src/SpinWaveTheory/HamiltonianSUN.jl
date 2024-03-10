@@ -63,8 +63,7 @@ function swt_pair_coupling!(H, Ai, Bj, swt, phase, bond)
 end
 
 
-# Set the dynamical quadratic Hamiltonian matrix in SU(N) mode. 
-function swt_hamiltonian_SUN!(H::Matrix{ComplexF64}, swt::SpinWaveTheory, q_reshaped::Vec3)
+function swt_hamiltonian_SUN!(H::Matrix{ComplexF64}, swt, q_reshaped::Vec3)
     (; sys, data) = swt
 
     L = nbands(swt)    # Number of quasiparticle bands

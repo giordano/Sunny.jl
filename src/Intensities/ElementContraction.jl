@@ -172,6 +172,17 @@ function intensity_formula(swt::SpinWaveTheory, contractor::Contraction{T}; kwar
     end
 end
 
+function intensity_formula(swt::SpinWaveTheoryUnits, mode::Symbol, contraction_info; kwargs...)
+    contractor, string_formula = contractor_from_mode(swt, mode)
+    intensity_formula(swt, contractor, contraction_info; string_formula, kwargs...)
+end
+
+function intensity_formula(swt::SpinWaveTheoryUnits, contractor::Contraction{T}, contraction_info; kwargs...) where T
+    intensity_formula_units(swt, required_correlations(contractor), contraction_info; return_type = T,kwargs...) do k, _, correlations
+        intensity = contract(correlations, k, contractor)
+    end
+end
+
 function intensity_formula(sc::SampledCorrelations, elem::Tuple{Symbol,Symbol}; kwargs...)
     string_formula = "S{$(elem[1]),$(elem[2])}[ix_q,ix_ω]"
     intensity_formula(sc,Element(sc, elem); string_formula, kwargs...)

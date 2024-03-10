@@ -64,6 +64,9 @@ export print_wrapped_intensities, suggest_magnetic_supercell, set_spiral_order!,
 include("Reshaping.jl")
 export reshape_supercell, resize_supercell, repeat_periodically
 
+include("EntangledUnits.jl")
+export contract_crystal, contract_system, expand_contracted_system!, SpinWaveTheoryUnits
+
 include("Integrators.jl")
 export Langevin, ImplicitMidpoint, step!, suggest_timestep
 
@@ -119,9 +122,6 @@ include("MonteCarlo/HistogramReweighting.jl")
 include("MonteCarlo/WangLandau.jl")
 include("MonteCarlo/ParallelWangLandau.jl")
 export propose_uniform, propose_flip, propose_delta, @mix_proposals, LocalSampler
-
-include("EntangledUnits.jl")
-export contract_crystal
 
 include("deprecated.jl")
 

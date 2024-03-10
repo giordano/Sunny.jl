@@ -4,8 +4,8 @@
 # to some System that users of this type are responsible for keeping track of.
 ObservableOperator = Union{LinearMap, Array{LinearMap,4}}
 
-observable_at_site(op::LinearMap,site) = op
-observable_at_site(op::Array{LinearMap,4},site) = op[site]
+observable_at_site(op::LinearMap, site) = op
+observable_at_site(op::Array{LinearMap,4}, site) = op[site]
 
 struct ObservableInfo
     # Correlation info (αβ indices of S^{αβ}(q,ω))
