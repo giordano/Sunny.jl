@@ -124,13 +124,13 @@ function cell_type(latvecs::Mat3)
     end
 
     if (a ≈ b && α ≈ β ≈ 90 && (γ ≈ 60 || γ ≈ 120)) ||
-       (b ≈ c && β ≈ γ ≈ 90 && (α ≈ 60 || α ≈ 120)) ||
-       (c ≈ a && γ ≈ α ≈ 90 && (β ≈ 60 || β ≈ 120))
-        if γ ≈ 120
+       (b ≈ c && β ≈ γ ≈ 90 && (α ≈ 60 || α ≈ 120)) || # added
+       (c ≈ a && γ ≈ α ≈ 90 && (β ≈ 60 || β ≈ 120))    # added
+        # if γ ≈ 120
             return hexagonal
-        else
-            error("Found a nonconventional hexagonal unit cell. Consider using `lattice_vectors(a, a, c, 90, 90, 120)`.")
-        end
+        # else
+        #     error("Found a nonconventional hexagonal unit cell. Consider using `lattice_vectors(a, a, c, 90, 90, 120)`.")
+        # end
     end
 
     # Accept any of three possible permutations for monoclinic unit cell
