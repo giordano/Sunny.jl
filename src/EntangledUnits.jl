@@ -288,6 +288,7 @@ function entangle_system(sys::System{M}, units) where M
     # For each contracted site, scan original interactions and reconstruct as necessary.
     new_pair_data = Tuple{Bond, Matrix{ComplexF64}}[]
     for (contracted_site, N) in zip(1:natoms(contracted_crystal), Ns_contracted)
+        Ns = Ns_local[contracted_site]
 
         ## Onsite portion of interaction 
         relevant_sites = sites_in_unit(contraction_info, contracted_site)
@@ -296,9 +297,9 @@ function entangle_system(sys::System{M}, units) where M
         # Zeeman term -- TODO: generalize to inhomogenous case -- here assumes field is applied identically on a per-unit-cell basis
         for site in relevant_sites
             unit_index = contraction_info.forward[site][2]
-            S = spin_matrices((Ns_local[contracted_site][unit_index] - 1)/2)
+            S = spin_matrices((Ns[unit_index] - 1)/2)
             B = sys.units.μB * (sys.gs[1, 1, 1, site]' * sys.extfield[1, 1, 1, site])
-            unit_operator -= local_op_to_unit_op(B' * S, unit_index, Ns_local[contracted_site])
+            unit_operator -= local_op_to_unit_op(B' * S, unit_index, Ns)
         end
 
         # Pair interactions that become within-unit interactions
@@ -306,7 +307,7 @@ function entangle_system(sys::System{M}, units) where M
         for (site, interaction) in zip(relevant_sites, original_interactions)
             onsite_original = interaction.onsite
             unit_index = contraction_info.forward[site][2]
-            unit_operator += local_op_to_unit_op(onsite_original, unit_index, Ns_local[contracted_site])
+            unit_operator += local_op_to_unit_op(onsite_original, unit_index, Ns)
         end
 
         # Sort all PairCouplings in couplings that will be within a unit and couplings that will be between units
