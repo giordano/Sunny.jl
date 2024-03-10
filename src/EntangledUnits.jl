@@ -126,8 +126,9 @@ function expand_crystal(contracted_crystal, contraction_info)
     Crystal(contracted_crystal.latvecs, expanded_positions)
 end
 
-function contracted_Ns(sys_original, contracted_cryst, contraction_info)
-    Ns = [Int64[] for _ in 1:natoms(contracted_cryst)] 
+function contracted_Ns(sys_original, contraction_info)
+    # Ns = [Int64[] for _ in 1:natoms(contracted_cryst)] 
+    Ns = [Int64[] for _ in 1:length(contraction_info.inverse)] 
     for (n, contracted_sites) in enumerate(contraction_info.inverse)
         for (; site) in contracted_sites
             push!(Ns[n], sys_original.Ns[site])
@@ -180,7 +181,7 @@ function contract_system(sys::System{M}, units) where M
     contracted_crystal, contraction_info = contract_crystal(sys.crystal, units)
 
     # Determine Ns for local Hilbert spaces (all must be equal). (TODO: Determine if alternative behavior preferable in mixed case.)
-    Ns_local = contracted_Ns(sys, contracted_crystal, contraction_info)
+    Ns_local = contracted_Ns(sys, contraction_info)
     Ns_contracted = map(Ns -> prod(Ns), Ns_local)
     @assert allequal(Ns_contracted) "After contraction, the dimensions of the local Hilbert spaces on each generalized site must all be equal."
 
@@ -341,7 +342,7 @@ function expand_contracted_system!(sys, sys_contracted, contraction_info)
 
     for contracted_site in Sunny.eachsite(sys_contracted)
         i, j, k, n = contracted_site.I
-        Ns_local = contracted_Ns(sys, sys_contracted.crystal, contraction_info)
+        Ns_local = contracted_Ns(sys, contraction_info)
         Ns = Ns_local[n]
 
         # This iteration will be slow because it's on the last index...
@@ -360,48 +361,48 @@ function expand_contracted_system!(sys, sys_contracted, contraction_info)
     end
 end
 
-function local_spins_in_unit(contraction_info)
-    observables = [SMatrix{N, N, ComplexF64, N*N}[] for _ in 1:length(contraction_info.inverse)]
-    Ns_unit = contracted_Ns(sys, sys_contracted.crystal, contraction_info)
-
-    for (i, original_site_data) in enumerate(contraction_info.inverse)
-        Ns = Ns_unit[i]
-        for inverse_data in original_site_data
-            local_op_to_unit_op(op, m, Ns)
-            push!(observables[i], ...)
-        end
-    end
-end
-
-function expand_contracted_system2!(sys, sys_contracted::System{N}, contraction_info) where N
-    expectation(op, Z) = real(Z' * op * Z)
-
-
-
-
-    for contracted_site in Sunny.eachsite(sys_contracted)
-        i, j, k, n = contracted_site.I
-        Ns_local = contracted_Ns(sys, sys_contracted.crystal, contraction_info)
-        Ns = Ns_local[n]
-
-        # This iteration will be slow because it's on the last index...
-        for (m, (; site)) in enumerate(contraction_info.inverse[n])
-            S = spin_matrices((Ns[m]-1)/2)
-            Sx = local_op_to_unit_op(S[1], m, Ns)
-            Sy = local_op_to_unit_op(S[2], m, Ns)
-            Sz = local_op_to_unit_op(S[3], m, Ns)
-            dipole = Sunny.Vec3(
-                expectation(Sx, sys_contracted.coherents[contracted_site]),
-                expectation(Sy, sys_contracted.coherents[contracted_site]),
-                expectation(Sz, sys_contracted.coherents[contracted_site]),
-            )
-            sys.dipoles[i, j, k, site] = dipole
-        end
-    end
-end
-
-
-# Fill a buffer with general expectation values
-# function expanded_spin_expectations!(buf, observables, sys_contracted, contraction_info)
-#     
+# function local_spins_in_unit(contraction_info)
+#     observables = [SMatrix{N, N, ComplexF64, N*N}[] for _ in 1:length(contraction_info.inverse)]
+#     Ns_unit = contracted_Ns(sys, sys_contracted.crystal, contraction_info)
+# 
+#     for (i, original_site_data) in enumerate(contraction_info.inverse)
+#         Ns = Ns_unit[i]
+#         for inverse_data in original_site_data
+#             local_op_to_unit_op(op, m, Ns)
+#             push!(observables[i], ...)
+#         end
+#     end
 # end
+# 
+# function expand_contracted_system2!(sys, sys_contracted::System{N}, contraction_info) where N
+#     expectation(op, Z) = real(Z' * op * Z)
+# 
+# 
+# 
+# 
+#     for contracted_site in Sunny.eachsite(sys_contracted)
+#         i, j, k, n = contracted_site.I
+#         Ns_local = contracted_Ns(sys, sys_contracted.crystal, contraction_info)
+#         Ns = Ns_local[n]
+# 
+#         # This iteration will be slow because it's on the last index...
+#         for (m, (; site)) in enumerate(contraction_info.inverse[n])
+#             S = spin_matrices((Ns[m]-1)/2)
+#             Sx = local_op_to_unit_op(S[1], m, Ns)
+#             Sy = local_op_to_unit_op(S[2], m, Ns)
+#             Sz = local_op_to_unit_op(S[3], m, Ns)
+#             dipole = Sunny.Vec3(
+#                 expectation(Sx, sys_contracted.coherents[contracted_site]),
+#                 expectation(Sy, sys_contracted.coherents[contracted_site]),
+#                 expectation(Sz, sys_contracted.coherents[contracted_site]),
+#             )
+#             sys.dipoles[i, j, k, site] = dipole
+#         end
+#     end
+# end
+# 
+# 
+# # Fill a buffer with general expectation values
+# # function expanded_spin_expectations!(buf, observables, sys_contracted, contraction_info)
+# #     
+# # end
