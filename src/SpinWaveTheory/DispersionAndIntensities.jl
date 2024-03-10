@@ -409,11 +409,15 @@ or a function of both the energy transfer `ω` and of `Δω`, e.g.:
 
 The integral of a properly normalized kernel function over all `Δω` is one.
 """
-function intensity_formula_units(f::Function, swt::SpinWaveTheoryUnits, corr_ix::AbstractVector{Int64}, contraction_info; kernel::Union{Nothing,Function},
-                            return_type=Float64, 
-                            string_formula="f(Q,ω,S{α,β}[ix_q,ix_ω])", 
-                            formfactors=nothing)
-    (; sys, data, observables) = swt
+function intensity_formula(f::Function, swt::EntangledSpinWaveTheory, corr_ix::AbstractVector{Int64}; 
+    kernel::Union{Nothing, Function},
+    return_type=Float64, 
+    string_formula="f(Q,ω,S{α,β}[ix_q,ix_ω])", 
+    formfactors=nothing
+)
+    (; entangled_sys, data, observables) = swt
+    (; sys, ci) = entangled_sys
+
     nunits, N = length(sys.dipoles), sys.Ns[1] # number of magnetic atoms and dimension of Hilbert space
     nmodes = nunits * (N-1) 
     sqrt_nunits_inv = 1.0 / √nunits
@@ -424,9 +428,8 @@ function intensity_formula_units(f::Function, swt::SpinWaveTheoryUnits, corr_ix:
     Avec_pref = zeros(ComplexF64, nunits)
     intensity = zeros(return_type, nmodes)
 
-    # Expand formfactors for symmetry classes to formfactors for all atoms in
-    # crystal
-    ff_atoms = propagate_form_factors_to_atoms(formfactors, swt.sys.crystal)
+    # TODO: form factors for entangled unit systems
+    # ff_atoms = propagate_form_factors_to_atoms(formfactors, swt.sys.crystal)
 
     # Upgrade to 2-argument kernel if needed
     kernel_edep = if isnothing(kernel)
@@ -452,7 +455,7 @@ function intensity_formula_units(f::Function, swt::SpinWaveTheoryUnits, corr_ix:
     #
     #   Smooth kernel --> I_of_ω = Intensity as a function of ω
     #
-    calc_intensity = function(swt::SpinWaveTheoryUnits, q::Vec3)
+    calc_intensity = function(swt::EntangledSpinWaveTheory, q::Vec3)
         # This function, calc_intensity, is an internal function to be stored
         # inside a formula. The unit system for `q` that is passed to
         # formula.calc_intensity is an implementation detail that may vary
@@ -462,8 +465,9 @@ function intensity_formula_units(f::Function, swt::SpinWaveTheoryUnits, corr_ix:
         # `intensities_*` functions defined in LinearSpinWaveIntensities.jl.
         # Separately, the functions calc_intensity for formulas associated with
         # SampledCorrelations will receive `q_absolute` in absolute units.
-        q_reshaped = to_reshaped_rlu(swt.sys, q)
-        q_absolute = swt.sys.crystal.recipvecs * q_reshaped
+        (; sys) = swt.entangled_sys.sys
+        q_reshaped = to_reshaped_rlu(sys, q)
+        q_absolute = sys.crystal.recipvecs * q_reshaped
 
         swt_hamiltonian_SUN!(H, swt, q_reshaped)
 
@@ -478,43 +482,40 @@ function intensity_formula_units(f::Function, swt::SpinWaveTheoryUnits, corr_ix:
 
             Avec_pref[i] = sqrt_nunits_inv * phase
 
-            # TODO: move form factor into `f`, then delete this rescaling
-            Avec_pref[i] *= compute_form_factor(ff_atoms[i], q_absolute⋅q_absolute)
+            # TODO: FormFactors for entangled units 
+            # Avec_pref[i] *= compute_form_factor(ff_atoms[i], q_absolute⋅q_absolute)
         end
 
         # Fill `intensity` array
         for band = 1:nmodes
-            corrs = if sys.mode == :SUN
-                v = reshape(view(V, :, band), N-1, nunits, 2)
-                Avec = zeros(ComplexF64, num_observables(observables))
-                (; observable_operators, observable_operators_full) = data
-                for i = 1:nunits
-                    inverse_infos = contraction_info.inverse[i]
-                    for μ = 1:num_observables(observables)
+            v = reshape(view(V, :, band), N-1, nunits, 2)
+            Avec = zeros(ComplexF64, num_observables(observables))
+            (; observable_buf, observable_operators_full) = data
+            for i = 1:nunits
+                inverse_infos = ci.inverse[i]
+                for μ = 1:num_observables(observables)
 
-                        # Construct q-dependent observable
-                        @views O = observable_operators[:, :, μ, i]
-                        O .= 0
-                        for (subsite, (; offset)) in enumerate(inverse_infos)
-                            phase = exp(-2π*im*(q_reshaped ⋅ offset))
-                            O += phase * @view(observable_operators_full[:, :, subsite, μ, i])
-                        end
-                        unit_normalization = 1/√(length(inverse_infos))
+                    # Construct q-dependent observable
+                    O = observable_buf
+                    O .= 0
+                    for (subsite, (; offset)) in enumerate(inverse_infos)
+                        phase = exp(-2π*im*(q_reshaped ⋅ offset))
+                        O += phase * @view(observable_operators_full[:, :, subsite, μ, i])
+                    end
+                    unit_normalization = 1/√(length(inverse_infos))
 
-                        # Accumulate into bosonic representation of observable
-                        for α = 1:N-1
-                            Avec[μ] += Avec_pref[i] * unit_normalization * (O[α, N] * v[α, i, 2] + O[N, α] * v[α, i, 1])
-                        end
+                    # Accumulate into bosonic representation of observable
+                    for α = 1:N-1
+                        Avec[μ] += Avec_pref[i] * unit_normalization * (O[α, N] * v[α, i, 2] + O[N, α] * v[α, i, 1])
                     end
                 end
-                corrs = Vector{ComplexF64}(undef,num_correlations(observables))
-                for (ci,i) in observables.correlations
-                    (α,β) = ci.I
-                    corrs[i] = Avec[α] * conj(Avec[β])
-                end
-                corrs
-            else
-                error("System contraction only available in SU(N) mode.")
+            end
+
+            # Calculate correlations
+            corrs = Vector{ComplexF64}(undef,num_correlations(observables))
+            for (ci,i) in observables.correlations
+                (α,β) = ci.I
+                corrs[i] = Avec[α] * conj(Avec[β])
             end
 
             intensity[band] = f(q_absolute, disp[band], corrs[corr_ix])

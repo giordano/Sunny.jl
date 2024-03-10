@@ -63,8 +63,14 @@ function swt_pair_coupling!(H, Ai, Bj, swt, phase, bond)
 end
 
 
-function swt_hamiltonian_SUN!(H::Matrix{ComplexF64}, swt, q_reshaped::Vec3)
-    (; sys, data) = swt
+function swt_hamiltonian_SUN!(H::Matrix{ComplexF64}, eswt::EntangledSpinWaveTheory, q_reshaped::Vec3)
+    swt_hamiltonian_SUN!(H, eswt.entangled_sys.sys, eswt.data, q_reshaped::Vec3)
+end
+function swt_hamiltonian_SUN!(H::Matrix{ComplexF64}, swt::SpinWaveTheory, q_reshaped::Vec3)
+    swt_hamiltonian_SUN!(H, swt.sys, swt, q_reshaped::Vec3)
+end
+
+function swt_hamiltonian_SUN!(H::Matrix{ComplexF64}, sys, swt, q_reshaped::Vec3)
 
     L = nbands(swt)    # Number of quasiparticle bands
     @assert size(H) == (2L, 2L)

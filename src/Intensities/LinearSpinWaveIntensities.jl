@@ -16,7 +16,7 @@ The output will be an array with indices identical to `ks`, with the last index 
 Note that `ks` is an array of wave vectors of arbitrary dimension. Each element
 ``k`` of `ks` must be a 3-wavevector in absolute units.
 """
-function intensities_broadened(swt::Union{SpinWaveTheory, SpinWaveTheoryUnits}, ks, ωvals, formula)
+function intensities_broadened(swt::Union{SpinWaveTheory, EntangledSpinWaveTheory}, ks, ωvals, formula)
     ks = Vec3.(ks)
     num_ω = length(ωvals)
 
@@ -53,7 +53,7 @@ The outputs will be arrays with indices identical to `ks`, with the last index
 giving the band index. `dispersions` reports the energy of each band, while
 `intensities` reports the scattering intensity.
 """
-function intensities_bands(swt::Union{SpinWaveTheory, SpinWaveTheoryUnits}, ks, formula::SpinWaveIntensityFormula)
+function intensities_bands(swt::Union{SpinWaveTheory, EntangledSpinWaveTheory}, ks, formula::SpinWaveIntensityFormula)
     if !isnothing(formula.kernel)
         # This is only triggered if the user has explicitly specified a formula with e.g. kT
         # corrections applied, but has not disabled the broadening kernel.

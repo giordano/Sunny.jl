@@ -9,10 +9,10 @@ struct SWTDataSUN
     observable_operators  :: Array{ComplexF64, 4}  # Observables in local frame (for intensity calcs)
 end
 
-struct SWTDataSUNUnits
+struct SWTDataEntangled
     local_unitaries           :: Array{ComplexF64, 3}  # Aligns to quantization axis on each site
     observable_operators_full :: Array{ComplexF64, 5}  # Observables in local frame for each subsite (for intensity calcs)
-    observable_operators      :: Array{ComplexF64, 4}  # Essentially a buffer that is populated appropriately for each, allowing it to be used as the `observable_operators` in the ordinary SWTDataSUN 
+    observable_buf            :: Array{ComplexF64, 2}  # Essentially a buffer that is populated appropriately for each, allowing it to be used as the `observable_operators` in the ordinary SWTDataSUN 
 end
 
 """
@@ -32,16 +32,37 @@ struct SpinWaveTheory
     observables  :: ObservableInfo
 end
 
-struct SpinWaveTheoryUnits
-    sys          :: System
-    data         :: SWTDataSUNUnits
-    energy_ϵ     :: Float64
-    observables  :: ObservableInfo
+struct EntangledSpinWaveTheory
+    entangled_sys  :: EntangledSystem
+    data           :: SWTDataEntangled
+    energy_ϵ       :: Float64
+    observables    :: ObservableInfo
+end
+
+function EntangledSpinWaveTheory(entangled_sys::EntangledSystem{N}; energy_ϵ::Float64=1e-8, observables=nothing, correlations=nothing, apply_g = true) where N
+    sys = entangled_sys.sys
+    if !isnothing(sys.ewald)
+        error("SpinWaveTheory does not yet support long-range dipole-dipole interactions.")
+    end
+
+    cellsize_mag = cell_shape(sys) * diagm(Vec3(sys.latsize))
+    sys = reshape_supercell_aux(sys, (1,1,1), cellsize_mag)
+
+    # Rotate local operators to quantization axis
+    obs = parse_observables(N; observables, correlations=nothing, g = apply_g ? sys.gs : nothing)
+    data = swt_data(sys, obs)
+
+    return EntangledSpinWaveTheory(entangled_sys, data, energy_ϵ, obs)
 end
 
 function SpinWaveTheory(sys::System{N}; energy_ϵ::Float64=1e-8, observables=nothing, correlations=nothing, apply_g = true) where N
     if !isnothing(sys.ewald)
         error("SpinWaveTheory does not yet support long-range dipole-dipole interactions.")
+    end
+    if sys.mode != :SUN
+        if !isnothing(observables) || !isnothing(correlations)
+            error("Only the default spin operators are supported in dipole mode")
+        end
     end
 
     # Reshape into single unit cell. A clone will always be performed, even if
@@ -50,38 +71,11 @@ function SpinWaveTheory(sys::System{N}; energy_ϵ::Float64=1e-8, observables=not
     sys = reshape_supercell_aux(sys, (1,1,1), cellsize_mag)
 
     # Rotate local operators to quantization axis
-    if sys.mode == :SUN
-        obs = parse_observables(N; observables, correlations, g = apply_g ? sys.gs : nothing)
-        data = swt_data_sun(sys, obs)
-    else
-        if !isnothing(observables) || !isnothing(correlations)
-            error("Only the default spin operators are supported in dipole mode")
-        end
-        obs = parse_observables(N; observables, correlations=nothing, g = apply_g ? sys.gs : nothing)
-        data = swt_data_dipole(sys, obs)
-    end
+    obs = parse_observables(N; observables, correlations=nothing, g = apply_g ? sys.gs : nothing)
+    data = swt_data(sys, obs)
 
     return SpinWaveTheory(sys, data, energy_ϵ, obs)
 end
-
-function SpinWaveTheoryUnits(sys::System{N}, sys_original, contraction_info; energy_ϵ::Float64=1e-8, observables=nothing, correlations=nothing, apply_g = true) where N
-    if !isnothing(sys.ewald)
-        error("SpinWaveTheory does not yet support long-range dipole-dipole interactions.")
-    end
-
-    # Reshape into single unit cell. A clone will always be performed, even if
-    # no reshaping happens. 
-    # TODO: Need to build tools to handle reshaping with "contracted" systems!
-    cellsize_mag = cell_shape(sys) * diagm(Vec3(sys.latsize))
-    sys = reshape_supercell_aux(sys, (1,1,1), cellsize_mag)
-
-    # Rotate local operators to quantization axis
-    obs = parse_observables(N; observables, correlations, g = apply_g ? sys.gs : nothing)
-    data = swt_data_sun_units(sys, sys_original, contraction_info, obs)
-
-    return SpinWaveTheoryUnits(sys, data, energy_ϵ, obs)
-end
-
 
 function Base.show(io::IO, ::MIME"text/plain", swt::SpinWaveTheory)
     printstyled(io, "SpinWaveTheory\n"; bold=true, color=:underline)
@@ -94,9 +88,6 @@ function nbands(swt::SpinWaveTheory)
     nflavors = sys.mode == :SUN ? sys.Ns[1]-1 : 1
     return nflavors * natoms(sys.crystal)
 end
-
-nbands(swt::SpinWaveTheoryUnits) = (swt.sys.Ns[1]-1) * natoms(swt.sys.crystal)
-
 
 # Given q in reciprocal lattice units (RLU) for the original crystal, return a
 # q_reshaped in RLU for the possibly-reshaped crystal.
@@ -149,7 +140,7 @@ end
 
 # Prepare local operators and observables for SU(N) spin wave calculation by
 # rotating these into the local reference frame determined by the ground state.
-function swt_data_sun(sys::System{N}, obs) where N
+function swt_data(sys::System{N}, obs) where N
     # Calculate transformation matrices into local reference frames
     n_magnetic_atoms = natoms(sys.crystal)
 
@@ -210,13 +201,15 @@ end
 
 
 # obs are observables _given in terms of `sys_original`_
-function swt_data_sun_units(sys::System{N}, sys_original, contraction_info, obs) where N
+function swt_data(entangled_sys::EntangledSystem{N}, obs) where N
+    (; sys, sys_origin, ci) = entangled_sys
+    
     # Calculate transformation matrices into local reference frames
     nunits = natoms(sys.crystal)
 
     # Check to make sure all "units" are the same -- this can be generalized later.
-    sites_per_unit = [length(info) for info in contraction_info.inverse]
-    Ns_all = Ns_in_units(sys_original, contraction_info)
+    sites_per_unit = [length(info) for info in ci.inverse]
+    Ns_all = Ns_in_units(sys_origin, ci)
     Ns_contracted = map(Ns -> prod(Ns), Ns_all)
     @assert allequal(sites_per_unit) "All units must have the same number of interior sites"
     sites_per_unit = sites_per_unit[1]
@@ -226,7 +219,7 @@ function swt_data_sun_units(sys::System{N}, sys_original, contraction_info, obs)
     # Preallocate buffers for local unitaries and observables.
     local_unitaries = zeros(ComplexF64, N, N, nunits)
     observables_localized_all = zeros(ComplexF64, N, N, sites_per_unit, num_observables(obs), nunits)
-    observables_localized = zeros(ComplexF64, N, N, num_observables(obs), nunits)
+    observable_buf = zeros(ComplexF64, N, N)
 
     for atom in 1:nunits
         # Create unitary that rotates [0, ..., 0, 1] into ground state direction
@@ -242,7 +235,7 @@ function swt_data_sun_units(sys::System{N}, sys_original, contraction_info, obs)
         # Rotate observables into local reference frames
         for k = 1:num_observables(obs)
             A = obs.observables[k]
-            for local_site in 1:length(contraction_info.inverse[unit])
+            for local_site in 1:length(ci.inverse[unit])
                 A_prod = local_op_to_unit_op(A, local_site, Ns_all[unit])
                 observables_localized_all[:, :, local_site, k, unit] = Hermitian(U' * convert(Matrix, A_prod) * U)
             end
@@ -271,17 +264,17 @@ function swt_data_sun_units(sys::System{N}, sys_original, contraction_info, obs)
         int.pair = pair_new
     end
 
-    return SWTDataSUNUnits(
+    return SWTDataUnits(
         local_unitaries,
         observables_localized_all,
-        observables_localized,
+        observable_buf,
     )
 end
 
 
 
 # Compute Stevens coefficients in the local reference frame
-function swt_data_dipole(sys::System{0}, obs)
+function swt_data(sys::System{0}, obs)
     N = sys.Ns[1]
     S = (N-1)/2
 

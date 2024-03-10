@@ -23,18 +23,23 @@ struct CrystalContractionInfo
     inverse :: Vector{Vector{InverseData}}   # List ordered according to contracted crystal sites. Each element is itself a list containing original crystal site indices and corresponding offset information 
 end
 
-# struct ContractedSystem
-#     sys :: System
-#     sys_origin :: System
-#     ci :: CrystalContractionInfo
-# end
-# 
-# function ContractedSystem(sys::System{N}, units) where N
-#     sys_contracted, contraction_info = contract_system(sys, units)
-#     ContractedSystem(sys_contracted, sys, contraction_info)
-# end
+struct EntangledSystem{N}
+    sys         :: System{N}
+    sys_origin  :: System
+    ci          :: CrystalContractionInfo
+    Ns_internal :: Vector{Vector{Int64}}
+end
+
+function EntangledSystem(sys::System{N}, units) where N
+    sys_contracted, contraction_info = contract_system(sys, units)
+    Ns_internal = Ns_in_units(sys, contraction_info)
+    EntangledSystem(sys_contracted, sys, contraction_info, Ns_internal)
+end
 
 
+# Takes a crystal and a list of integer tuples. The tuples indicate which sites
+# in the original crystal are to be grouped, i.e., contracted into a single site
+# of a new crystal.
 function contract_crystal(crystal, units)
 
     # Determine which sites are entangled and which are not.
@@ -117,6 +122,7 @@ function contract_crystal(crystal, units)
     return new_crystal, contraction_info
 end
 
+
 # Reconstruct original crystal from contracted Crystal and a CrystalContractionInfo
 function expand_crystal(contracted_crystal, contraction_info)
     (; forward, inverse) = contraction_info
@@ -131,8 +137,12 @@ function expand_crystal(contracted_crystal, contraction_info)
     Crystal(contracted_crystal.latvecs, expanded_positions)
 end
 
+# Returns a list of length equal to the number of "units" in the a contracted
+# crystal. Each list element is itself a list of integers, each of which
+# corresponds to the N of the corresponding site of the original system. The
+# order is consistent with that given by the `inverse` field of a
+# `CyrstalContractionInfo`.
 function Ns_in_units(sys_original, contraction_info)
-    # Ns = [Int64[] for _ in 1:natoms(contracted_cryst)] 
     Ns = [Int64[] for _ in 1:length(contraction_info.inverse)] 
     for (n, contracted_sites) in enumerate(contraction_info.inverse)
         for (; site) in contracted_sites
@@ -144,6 +154,7 @@ end
 
 # Given a local operator, A, that lives within an entangled unit on local site
 # i, construct I ⊗ … ⊗ I ⊗ A ⊗ I ⊗ … ⊗ I, where A is in the i position.
+# TODO: Incorporate this into `to_product_space` to unify code base.
 function local_op_to_unit_op(A, i, Ns)
     @assert size(A, 1) == Ns[i] "Given operator not consistent with dimension of local Hilbert space"
     nsites = length(Ns) # Number of sites in the unit.
@@ -161,7 +172,8 @@ end
 # Pull out original indices of sites in entangled unit
 sites_in_unit(contraction_info, i) = [inverse_data.site for inverse_data in contraction_info.inverse[i]] 
 
-# List of all pair-wise bonds in a unit.
+# List of all pair-wise bonds in a unit. The resulting bonds are to be
+# interpreted in terms of the original crystal.
 function bonds_in_unit(contraction_info, i)
     sites = sites_in_unit(contraction_info, i)
     nsites = length(sites)
@@ -172,14 +184,14 @@ function bonds_in_unit(contraction_info, i)
     return bonds
 end
 
+# Checks whether a bond given in terms of the original crystal lies inside a
+# single unit of the contracted system.
 function bond_is_in_unit(bond::Bond, ci::CrystalContractionInfo)
     (ci.forward[bond.i][1] == ci.forward[bond.j][1]) && (bond.n == [0, 0, 0])
 end
 
-function contract_system(::System{0}, _) 
-    error("Cannot contract a dipole system.")
-end
-
+# Converts what was a pair coupling between two different sites in the original system into a single
+# on-bond operator (an onsite operator in terms of the "units".)
 function accum_pair_coupling_into_bond_operator_in_unit!(op, pc, sys, contracted_site, contraction_info)
     (; bond, scalar, bilin, biquad, general, isculled) = pc
     isculled && return
@@ -218,6 +230,9 @@ function accum_pair_coupling_into_bond_operator_in_unit!(op, pc, sys, contracted
     end
 end
 
+
+# Converts a pair coupling from the original system into a pair coupling between
+# units in the new system.
 function pair_coupling_into_bond_operator_between_units(pc, sys, contraction_info)
     (; bond, scalar, bilin, biquad, general) = pc
     (; i, j, n) = bond
@@ -257,6 +272,10 @@ function pair_coupling_into_bond_operator_between_units(pc, sys, contraction_inf
     end
 
     return (; newbond, bond_operator)
+end
+
+function contract_system(::System{0}, _) 
+    error("Cannot contract a dipole system.")
 end
 
 function contract_system(sys::System{M}, units) where M
@@ -339,48 +358,10 @@ function contract_system(sys::System{M}, units) where M
 end
 
 
-# # Finally combine interactions on identical bonds and set them in the system
-# unique_bonds = unique([data[1] for data in new_pair_data])
-# # for unique_bond in unique_bonds
-# #     bond_data = filter(data -> data[1] == unique_bond, new_pair_data)
-# #     bond_operator = sum(data[2] for data in bond_data)
-# #     println("Setting bond: ", unique_bond)
-# #     set_pair_coupling!(sys_contracted, bond_operator, unique_bond)
-# # end
- 
- 
-# unique_bonds = unique([data[1] for data in new_pair_data])
-# grouped_bonds = []
-# for bond in unique_bonds 
-#     bonds = Bond[]
-#     push!(bonds, bond)
-#     mirror_bond = Bond(bond.i, bond.j, -1*bond.n)
-#     idx = findfirst(==(mirror_bond), unique_bonds)
-#     if !isnothing(idx)
-#         push!(bonds, unique_bonds[idx])
-#         deleteat!(unique_bonds, idx)
-#     end
-#     push!(grouped_bonds, bonds)
-# end
-# 
-# 
-# for group in grouped_bonds
-#     println("New group: ")
-#     first_bond = group[1]
-#     bond_data = filter(data -> data[1] == first_bond, new_pair_data)
-#     bond_operator = sum(data[2] for data in bond_data)
-#     if length(group) > 1
-#         for bond in group[2:end] 
-#             bond_data = filter(data -> data[1] == bond, new_pair_data)
-#             bond_operator += sum(data[2] for data in bond_data)
-#         end
-#     end
-#     set_pair_coupling!(sys_contracted, bond_operator, first_bond)
-# end
 
 
 
-# Cleanup
+# Make optimized version, also generalize to work on list of observables
 function expand_contracted_system!(sys, sys_contracted, contraction_info)
     expectation(op, Z) = real(Z' * op * Z)
 
@@ -404,49 +385,3 @@ function expand_contracted_system!(sys, sys_contracted, contraction_info)
         end
     end
 end
-
-# function local_spins_in_unit(contraction_info)
-#     observables = [SMatrix{N, N, ComplexF64, N*N}[] for _ in 1:length(contraction_info.inverse)]
-#     Ns_unit = contracted_Ns(sys, sys_contracted.crystal, contraction_info)
-# 
-#     for (i, original_site_data) in enumerate(contraction_info.inverse)
-#         Ns = Ns_unit[i]
-#         for inverse_data in original_site_data
-#             local_op_to_unit_op(op, m, Ns)
-#             push!(observables[i], ...)
-#         end
-#     end
-# end
-# 
-# function expand_contracted_system2!(sys, sys_contracted::System{N}, contraction_info) where N
-#     expectation(op, Z) = real(Z' * op * Z)
-# 
-# 
-# 
-# 
-#     for contracted_site in Sunny.eachsite(sys_contracted)
-#         i, j, k, n = contracted_site.I
-#         Ns_local = contracted_Ns(sys, sys_contracted.crystal, contraction_info)
-#         Ns = Ns_local[n]
-# 
-#         # This iteration will be slow because it's on the last index...
-#         for (m, (; site)) in enumerate(contraction_info.inverse[n])
-#             S = spin_matrices((Ns[m]-1)/2)
-#             Sx = local_op_to_unit_op(S[1], m, Ns)
-#             Sy = local_op_to_unit_op(S[2], m, Ns)
-#             Sz = local_op_to_unit_op(S[3], m, Ns)
-#             dipole = Sunny.Vec3(
-#                 expectation(Sx, sys_contracted.coherents[contracted_site]),
-#                 expectation(Sy, sys_contracted.coherents[contracted_site]),
-#                 expectation(Sz, sys_contracted.coherents[contracted_site]),
-#             )
-#             sys.dipoles[i, j, k, site] = dipole
-#         end
-#     end
-# end
-# 
-# 
-# # Fill a buffer with general expectation values
-# # function expanded_spin_expectations!(buf, observables, sys_contracted, contraction_info)
-# #     
-# # end

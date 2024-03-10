@@ -65,7 +65,7 @@ include("Reshaping.jl")
 export reshape_supercell, resize_supercell, repeat_periodically
 
 include("EntangledUnits.jl")
-export contract_crystal, contract_system, expand_contracted_system!, SpinWaveTheoryUnits
+export contract_crystal, contract_system, expand_contracted_system!, EntangledSystem
 
 include("Integrators.jl")
 export Langevin, ImplicitMidpoint, step!, suggest_timestep
@@ -82,7 +82,7 @@ include("SpinWaveTheory/HamiltonianSUN.jl")
 include("SpinWaveTheory/DispersionAndIntensities.jl")
 include("SpinWaveTheory/Lanczos.jl")
 include("SpinWaveTheory/LSWTCorrections.jl")
-export SpinWaveTheory, dispersion, dssf, delta_function_kernel
+export SpinWaveTheory, EntangledSpinWaveTheory, dispersion, dssf, delta_function_kernel
 
 include("SampledCorrelations/SampledCorrelations.jl")
 include("SampledCorrelations/CorrelationUtils.jl")
