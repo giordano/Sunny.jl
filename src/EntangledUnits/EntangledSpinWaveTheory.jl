@@ -6,15 +6,15 @@ end
 
 struct EntangledSpinWaveTheory # Could just expand union above, but type now available for dispatch
     sys              :: System
+    crystal_origin   :: Crystal
     contraction_info :: CrystalContractionInfo
-    Ns_unit          :: Vector{Vector{Int64}}
     data             :: SWTDataEntangled
     energy_ϵ         :: Float64
     observables      :: ObservableInfo
 end
 
 function EntangledSpinWaveTheory(esys::EntangledSystem; energy_ϵ::Float64=1e-8, observables=nothing, correlations=nothing, apply_g = true)
-    (; sys, Ns_unit) = esys
+    (; sys, Ns_unit, crystal_origin) = esys
     if !isnothing(sys.ewald)
         error("SpinWaveTheory does not yet support long-range dipole-dipole interactions.")
     end
@@ -43,7 +43,7 @@ function EntangledSpinWaveTheory(esys::EntangledSystem; energy_ϵ::Float64=1e-8,
     obs = parse_observables(N; observables, correlations, g = apply_g ? sys.gs : nothing)
     data = swt_data_entangled(sys_reshaped, esys, obs)
 
-    return EntangledSpinWaveTheory(sys_reshaped, esys.contraction_info, esys.Ns_unit, data, energy_ϵ, obs)
+    return EntangledSpinWaveTheory(sys_reshaped, crystal_origin, esys.contraction_info, data, energy_ϵ, obs)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", swt::EntangledSpinWaveTheory)
@@ -53,6 +53,11 @@ function Base.show(io::IO, ::MIME"text/plain", swt::EntangledSpinWaveTheory)
 end
 
 nbands(swt::EntangledSpinWaveTheory) = (swt.sys.Ns[1]-1)  * natoms(swt.sys.crystal)
+
+function to_reshaped_rlu(esys::EntangledSystem, q)
+    (; sys, crystal_origin) = esys
+    return sys.crystal.recipvecs \ (crystal_origin.recipvecs * q)
+end
 
 # obs are observables _given in terms of `sys_original`_
 function swt_data_entangled(sys::System, esys::EntangledSystem, obs)
@@ -192,8 +197,8 @@ function intensity_formula(f::Function, swt::EntangledSpinWaveTheory, corr_ix::A
         # `intensities_*` functions defined in LinearSpinWaveIntensities.jl.
         # Separately, the functions calc_intensity for formulas associated with
         # SampledCorrelations will receive `q_absolute` in absolute units.
-        (; sys, contraction_info) = swt
-        q_reshaped = to_reshaped_rlu(sys, q)
+        (; sys, contraction_info, crystal_origin) = swt
+        q_reshaped = sys.crystal.recipvecs \ (crystal_origin.recipvecs * q)
         q_absolute = sys.crystal.recipvecs * q_reshaped
 
         swt_hamiltonian_SUN!(H, swt, q_reshaped)

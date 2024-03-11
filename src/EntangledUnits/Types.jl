@@ -30,13 +30,14 @@ end
 
 struct EntangledSystem
     sys               :: System
+    crystal_origin    :: Crystal
     contraction_info  :: CrystalContractionInfo
     Ns_unit           :: Vector{Vector{Int64}}   # This eliminates need to carry original system around in many places
 end
 
 function EntangledSystem(sys, units)
     (; sys_entangled, contraction_info, Ns_unit) = entangle_system(sys, units)
-    EntangledSystem(sys_entangled, contraction_info, Ns_unit)
+    EntangledSystem(sys_entangled, orig_crystal(sys), contraction_info, Ns_unit)
 end
 
 
