@@ -64,8 +64,9 @@ export print_wrapped_intensities, suggest_magnetic_supercell, set_spiral_order!,
 include("Reshaping.jl")
 export reshape_supercell, resize_supercell, repeat_periodically
 
-include("EntangledUnits.jl")
-export contract_crystal, entangle_system, expected_dipoles_of_entangled_system!
+include("EntangledUnits/Types.jl")
+include("EntangledUnits/EntangledUnits.jl")
+export contract_crystal, EntangledSystem, expected_dipoles_of_entangled_system!
 
 include("Integrators.jl")
 export Langevin, ImplicitMidpoint, step!, suggest_timestep
@@ -82,7 +83,7 @@ include("SpinWaveTheory/HamiltonianSUN.jl")
 include("SpinWaveTheory/DispersionAndIntensities.jl")
 include("SpinWaveTheory/Lanczos.jl")
 include("SpinWaveTheory/LSWTCorrections.jl")
-export SpinWaveTheory, EntangledSpinWaveTheory, dispersion, dssf, delta_function_kernel
+export SpinWaveTheory, dispersion, dssf, delta_function_kernel
 
 include("SampledCorrelations/SampledCorrelations.jl")
 include("SampledCorrelations/CorrelationUtils.jl")
@@ -95,6 +96,9 @@ export SampledCorrelations, dynamical_correlations, instant_correlations, add_sa
     intensity_formula, integrated_lorentzian
 
 include("Intensities/ElementContraction.jl")
+
+include("EntangledUnits/EntangledSpinWaveTheory.jl")
+export EntangledSpinWaveTheory
 
 include("Intensities/Interpolation.jl")
 export intensities_interpolated, instant_intensities_interpolated, rotation_in_rlu,
@@ -114,6 +118,7 @@ export reciprocal_space_shell, powder_average_binned
 
 include("Intensities/ExperimentData.jl")
 export load_nxs, generate_mantid_script_from_binning_parameters
+
 
 include("MonteCarlo/Samplers.jl")
 include("MonteCarlo/BinnedArray.jl")
