@@ -113,22 +113,6 @@ function Ns_in_units(sys_original, contraction_info)
     Ns
 end
 
-# # Given a local operator, A, that lives within an entangled unit on local site
-# # i, construct I ⊗ … ⊗ I ⊗ A ⊗ I ⊗ … ⊗ I, where A is in the i position.
-# # TODO: Incorporate this into `to_product_space` to unify code base.
-# function local_op_to_product_space(A, i, Ns)
-#     @assert size(A, 1) == Ns[i] "Given operator not consistent with dimension of local Hilbert space"
-#     nsites = length(Ns) # Number of sites in the unit.
-# 
-#     # If there is only one site in the unit, simply return the original operator.
-#     (nsites == 1) && (return A)
-# 
-#     # Otherwise generate the appropriate tensor product.
-#     ops = [unit_index == i ? A : I(Ns[unit_index]) for unit_index in 1:nsites]
-# 
-#     return reduce(kron, ops)
-# end
-
 
 # Pull out original indices of sites in entangled unit
 sites_in_unit(contraction_info, i) = [inverse_data.site for inverse_data in contraction_info.inverse[i]] 

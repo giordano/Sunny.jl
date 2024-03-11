@@ -17,6 +17,45 @@
     end
 end
 
+@testitem "Test Dimer Interactions" begin
+    J = 1.0
+    J′ = 0.1
+    dims = (1, 1, 1)
+    latvecs = [
+        1  0  0
+        0  1  0
+        0  0  2
+    ]
+    positions = [[0, 0, 0], [0.0, 0.5, 0.0]] 
+
+    crystal = Crystal(latvecs, positions, 1; types = ["A", "B"])
+    sys = System(crystal, dims, [SpinInfo(1; S=1/2, g=2), SpinInfo(2; S=1/2, g=2)], :SUN)
+    set_exchange!(sys, J, Bond(1, 2, [0, 0, 0]))
+    set_exchange!(sys, J′, Bond(1, 1, [1, 0, 0]))
+
+    sys_entangled = EntangledSystem(sys, [(1, 2)])
+    interactions = sys_entangled.sys.interactions_union[1]
+
+    # Test on-bond exchange
+    onsite_operator = interactions.onsite
+    S = spin_matrices(1/2)
+    Sl, Su = to_product_space(S, S)
+    onsite_ref = J * (Sl' * Su)
+    @test onsite_operator ≈ onsite_ref
+
+    # Test inter-bond exchange
+    pc = Sunny.as_general_pair_coupling(interactions.pair[1], sys_entangled.sys)
+    Sl1, Sl2 = to_product_space(Sl, Sl)
+    Su1, Su2 = to_product_space(Su, Su)
+    bond_operator = zeros(ComplexF64, 16, 16)
+    for (A, B) in pc.general.data
+        bond_operator .+= kron(A, B)
+    end
+    # bond_ref = J′*((Sl2' * Sl1) .+ (Su2' * Su1))  <---- This should be the answer
+    bond_ref = J′*(Sl2' * Sl1)
+    @test bond_operator ≈ bond_ref
+end
+
 @testitem "Ba3Mn2O8 Dispersion and Intensities" begin
     function J_of_Q(_, J1, J2, J3, J4, q)
         h, k, l = q
