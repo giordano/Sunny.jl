@@ -113,21 +113,21 @@ function Ns_in_units(sys_original, contraction_info)
     Ns
 end
 
-# Given a local operator, A, that lives within an entangled unit on local site
-# i, construct I ⊗ … ⊗ I ⊗ A ⊗ I ⊗ … ⊗ I, where A is in the i position.
-# TODO: Incorporate this into `to_product_space` to unify code base.
-function local_op_to_unit_op(A, i, Ns)
-    @assert size(A, 1) == Ns[i] "Given operator not consistent with dimension of local Hilbert space"
-    nsites = length(Ns) # Number of sites in the unit.
-
-    # If there is only one site in the unit, simply return the original operator.
-    (nsites == 1) && (return A)
-
-    # Otherwise generate the appropriate tensor product.
-    ops = [unit_index == i ? A : I(Ns[unit_index]) for unit_index in 1:nsites]
-
-    return reduce(kron, ops)
-end
+# # Given a local operator, A, that lives within an entangled unit on local site
+# # i, construct I ⊗ … ⊗ I ⊗ A ⊗ I ⊗ … ⊗ I, where A is in the i position.
+# # TODO: Incorporate this into `to_product_space` to unify code base.
+# function local_op_to_product_space(A, i, Ns)
+#     @assert size(A, 1) == Ns[i] "Given operator not consistent with dimension of local Hilbert space"
+#     nsites = length(Ns) # Number of sites in the unit.
+# 
+#     # If there is only one site in the unit, simply return the original operator.
+#     (nsites == 1) && (return A)
+# 
+#     # Otherwise generate the appropriate tensor product.
+#     ops = [unit_index == i ? A : I(Ns[unit_index]) for unit_index in 1:nsites]
+# 
+#     return reduce(kron, ops)
+# end
 
 
 # Pull out original indices of sites in entangled unit
@@ -175,19 +175,19 @@ function accum_pair_coupling_into_bond_operator_in_unit!(op, pc, sys, contracted
 
     # Add bilinear part
     J = bilin isa Float64 ? bilin*I(3) : bilin
-    Si = [local_op_to_unit_op(Sa, i_unit, Ns_unit) for Sa in spin_matrices((Ni-1)/2)]
-    Sj = [local_op_to_unit_op(Sb, j_unit, Ns_unit) for Sb in spin_matrices((Nj-1)/2)]
+    Si = [local_op_to_product_space(Sa, i_unit, Ns_unit) for Sa in spin_matrices((Ni-1)/2)]
+    Sj = [local_op_to_product_space(Sb, j_unit, Ns_unit) for Sb in spin_matrices((Nj-1)/2)]
     op .+= Si' * J * Sj
 
     # Add biquadratic part
     K = biquad isa Float64 ? diagm(biquad * Sunny.scalar_biquad_metric) : biquad
-    Oi = [local_op_to_unit_op(Oa, i_unit, Ns_unit) for Oa in stevens_matrices_of_dim(2; N=Ni)]
-    Oj = [local_op_to_unit_op(Ob, j_unit, Ns_unit) for Ob in stevens_matrices_of_dim(2; N=Nj)]
+    Oi = [local_op_to_product_space(Oa, i_unit, Ns_unit) for Oa in stevens_matrices_of_dim(2; N=Ni)]
+    Oj = [local_op_to_product_space(Ob, j_unit, Ns_unit) for Ob in stevens_matrices_of_dim(2; N=Nj)]
     op .+= Oi' * K * Oj
 
     # Add general part
     for (A, B) in general.data
-        op .+= local_op_to_unit_op(A, i_unit, Ns_unit) * local_op_to_unit_op(B, j_unit, Ns_unit)
+        op .+= local_op_to_product_space(A, i_unit, Ns_unit) * local_op_to_product_space(B, j_unit, Ns_unit)
     end
 end
 
@@ -216,20 +216,20 @@ function pair_coupling_into_bond_operator_between_units(pc, sys, contraction_inf
 
     # Add bilinear part
     J = bilin isa Float64 ? bilin*I(3) : bilin
-    Si = [kron(local_op_to_unit_op(Sa, unitsub1, Ns1), I(Ns_contracted[unit1])) for Sa in spin_matrices((N1-1)/2)]
-    Sj = [kron(I(Ns_contracted[unit2]), local_op_to_unit_op(Sa, unitsub2, Ns2)) for Sa in spin_matrices((N2-1)/2)]
+    Si = [kron(local_op_to_product_space(Sa, unitsub1, Ns1), I(Ns_contracted[unit1])) for Sa in spin_matrices((N1-1)/2)]
+    Sj = [kron(I(Ns_contracted[unit2]), local_op_to_product_space(Sa, unitsub2, Ns2)) for Sa in spin_matrices((N2-1)/2)]
     bond_operator += Si' * J * Sj
 
     # Add biquadratic part
     K = biquad isa Float64 ? diagm(biquad * Sunny.scalar_biquad_metric) : biquad
-    Oi = [kron(local_op_to_unit_op(Oa, unitsub1, Ns1), I(Ns_contracted[unit1])) for Oa in stevens_matrices_of_dim(2; N=N1)]
-    Oj = [kron(I(Ns_contracted[unit2]), local_op_to_unit_op(Ob, unitsub2, Ns2)) for Ob in stevens_matrices_of_dim(2; N=N2)]
+    Oi = [kron(local_op_to_product_space(Oa, unitsub1, Ns1), I(Ns_contracted[unit1])) for Oa in stevens_matrices_of_dim(2; N=N1)]
+    Oj = [kron(I(Ns_contracted[unit2]), local_op_to_product_space(Ob, unitsub2, Ns2)) for Ob in stevens_matrices_of_dim(2; N=N2)]
     bond_operator += Oi' * K * Oj
 
     # Add general part
     for (A, B) in general.data
-        bond_operator += kron( local_op_to_unit_op(A, unitsub1, Ns1), I(Ns_contracted[unit1]) ) * 
-                         kron( I(Ns_contracted[unit2]), local_op_to_unit_op(B, unitsub2, Ns2) )
+        bond_operator += kron( local_op_to_product_space(A, unitsub1, Ns1), I(Ns_contracted[unit1]) ) * 
+                         kron( I(Ns_contracted[unit2]), local_op_to_product_space(B, unitsub2, Ns2) )
     end
 
     return (; newbond, bond_operator)
@@ -268,7 +268,7 @@ function entangle_system(sys::System{M}, units) where M
             unit_index = contraction_info.forward[site][2]
             S = spin_matrices((Ns[unit_index] - 1)/2)
             B = sys.units.μB * (sys.gs[1, 1, 1, site]' * sys.extfield[1, 1, 1, site])
-            unit_operator -= local_op_to_unit_op(B' * S, unit_index, Ns)
+            unit_operator -= local_op_to_product_space(B' * S, unit_index, Ns)
         end
 
         # Pair interactions that become within-unit interactions
@@ -276,7 +276,7 @@ function entangle_system(sys::System{M}, units) where M
         for (site, interaction) in zip(relevant_sites, original_interactions)
             onsite_original = interaction.onsite
             unit_index = contraction_info.forward[site][2]
-            unit_operator += local_op_to_unit_op(onsite_original, unit_index, Ns)
+            unit_operator += local_op_to_product_space(onsite_original, unit_index, Ns)
         end
 
         # Sort all PairCouplings in couplings that will be within a unit and couplings that will be between units
@@ -341,9 +341,9 @@ function expected_dipoles_of_entangled_system!(dipole_buf, esys::EntangledSystem
         # This iteration will be slow because it's on the last index...
         for (m, (; site)) in enumerate(contraction_info.inverse[n])
             S = spin_matrices((Ns[m]-1)/2)
-            Sx = local_op_to_unit_op(S[1], m, Ns)
-            Sy = local_op_to_unit_op(S[2], m, Ns)
-            Sz = local_op_to_unit_op(S[3], m, Ns)
+            Sx = local_op_to_product_space(S[1], m, Ns)
+            Sy = local_op_to_product_space(S[2], m, Ns)
+            Sz = local_op_to_product_space(S[3], m, Ns)
             dipole = Sunny.Vec3(
                 expectation(Sx, sys.coherents[contracted_site]),
                 expectation(Sy, sys.coherents[contracted_site]),

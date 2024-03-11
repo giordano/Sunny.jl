@@ -36,10 +36,12 @@ function EntangledSpinWaveTheory(esys::EntangledSystem; energy_ϵ::Float64=1e-8,
     cellsize_mag = cell_shape(sys) * diagm(Vec3(sys.latsize))
     sys_reshaped = reshape_supercell_aux(sys, (1,1,1), cellsize_mag)
 
+    # Note: will need to write reshaping functions for contraction info in most general case.
+
     # Rotate local operators to quantization axis
     N = esys.sys.Ns[1]
     obs = parse_observables(N; observables, correlations, g = apply_g ? sys.gs : nothing)
-    data = swt_data_entangled(esys, obs)
+    data = swt_data_entangled(sys_reshaped, esys, obs)
 
     return EntangledSpinWaveTheory(sys_reshaped, esys.contraction_info, esys.Ns_unit, data, energy_ϵ, obs)
 end
@@ -53,8 +55,8 @@ end
 nbands(swt::EntangledSpinWaveTheory) = (swt.sys.Ns[1]-1)  * natoms(swt.sys.crystal)
 
 # obs are observables _given in terms of `sys_original`_
-function swt_data_entangled(esys::EntangledSystem, obs)
-    (; sys, contraction_info, Ns_unit) = esys
+function swt_data_entangled(sys::System, esys::EntangledSystem, obs)
+    (; contraction_info, Ns_unit) = esys
     N = esys.sys.Ns[1]
     
     # Calculate transformation matrices into local reference frames
@@ -88,7 +90,7 @@ function swt_data_entangled(esys::EntangledSystem, obs)
         for k = 1:num_observables(obs)
             A = obs.observables[k]
             for local_site in 1:sites_per_unit
-                A_prod = local_op_to_unit_op(A, local_site, Ns_unit[unit])
+                A_prod = local_op_to_product_space(A, local_site, Ns_unit[unit])
                 observables_localized_all[:, :, local_site, k, unit] = Hermitian(U' * convert(Matrix, A_prod) * U)
             end
         end
