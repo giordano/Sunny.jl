@@ -308,30 +308,6 @@ function entangle_system(sys::System{M}, units) where M
         set_pair_coupling!(sys_entangled, bond_operator, bond)
     end
 
-    # Now have list of bonds and bond operators. First we must find individual
-    # exemplars of each symmetry class of bonds in terms of the *new* crystal.
-    # all_bonds = [data[1] for data in new_pair_data]
-    # all_ops = [data[2] for data in new_pair_data]
-    # grouped_interactions = []
-    # while length(all_bonds) > 0
-    #     idcs = findall(all_bonds) do bond
-    #         is_related_by_symmetry(contracted_crystal, bond, all_bonds[1])
-    #     end
-    #     bond_exemplars = all_bonds[idcs]
-    #     ops = all_ops[idcs]
-    #     deleteat!(all_bonds, idcs)
-    #     deleteat!(all_ops, idcs)
-    #     push!(grouped_interactions, collect(zip(bond_exemplars, ops)))
-    # end
-
-    # # We collected all bond_operators associated with a particular exemplar, sum
-    # # them, and set the interaction
-    # for group in grouped_interactions
-    #     exemplar_bond = group[1][1]
-    #     bond_operator = sum([pair[2] for pair in group])  # Add symmetry transformations
-    #     set_pair_coupling!(sys_entangled, bond_operator, exemplar_bond)
-    # end
-
     return (; sys_entangled, contraction_info, Ns_unit)
 end
 

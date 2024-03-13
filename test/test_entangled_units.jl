@@ -32,6 +32,7 @@ end
     sys = System(crystal, dims, [SpinInfo(1; S=1/2, g=2), SpinInfo(2; S=1/2, g=2)], :SUN)
     set_exchange!(sys, J, Bond(1, 2, [0, 0, 0]))
     set_exchange!(sys, J′, Bond(1, 1, [1, 0, 0]))
+    set_exchange!(sys, J′, Bond(2, 2, [1, 0, 0]))  # Needed because we broke the symmetry equivalence of the two sites
 
     sys_entangled = EntangledSystem(sys, [(1, 2)])
     interactions = sys_entangled.sys.interactions_union[1]
@@ -51,8 +52,7 @@ end
     for (A, B) in pc.general.data
         bond_operator .+= kron(A, B)
     end
-    # bond_ref = J′*((Sl2' * Sl1) .+ (Su2' * Su1))  <---- This should be the answer
-    bond_ref = J′*(Sl2' * Sl1)
+    bond_ref = J′*((Sl2' * Sl1) .+ (Su2' * Su1))
     @test bond_operator ≈ bond_ref
 end
 
