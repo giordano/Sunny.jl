@@ -338,5 +338,6 @@ function expected_dipoles_of_entangled_system!(dipole_buf, esys::EntangledSystem
 end
 expected_dipoles_of_entangled_system!(sys_original, sys_entangled) = expected_dipoles_of_entangled_system!(sys_original.dipoles, sys_entangled)
 
+
 # TODO: Write this function:
 # function expected_observables_of_entangled_system!(sys, observables, sys_entangled, entanglement_data)

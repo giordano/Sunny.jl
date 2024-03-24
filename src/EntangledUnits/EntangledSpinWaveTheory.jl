@@ -14,7 +14,8 @@ struct EntangledSpinWaveTheory # Could just expand union above, but type now ava
 end
 
 function EntangledSpinWaveTheory(esys::EntangledSystem; energy_ϵ::Float64=1e-8, observables=nothing, correlations=nothing, apply_g = true)
-    (; sys, Ns_unit, crystal_origin) = esys
+    (; sys, Ns_unit, sys_origin) = esys
+    crystal_origin = orig_crystal(sys_origin)
     if !isnothing(sys.ewald)
         error("SpinWaveTheory does not yet support long-range dipole-dipole interactions.")
     end
@@ -55,8 +56,8 @@ end
 nbands(swt::EntangledSpinWaveTheory) = (swt.sys.Ns[1]-1)  * natoms(swt.sys.crystal)
 
 function to_reshaped_rlu(esys::EntangledSystem, q)
-    (; sys, crystal_origin) = esys
-    return sys.crystal.recipvecs \ (crystal_origin.recipvecs * q)
+    (; sys, sys_origin) = esys
+    return sys.crystal.recipvecs \ (orig_crystal(sys_origin).recipvecs * q)
 end
 
 # obs are observables _given in terms of `sys_original`_

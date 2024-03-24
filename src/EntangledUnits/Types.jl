@@ -30,20 +30,42 @@ end
 
 struct EntangledSystem
     sys               :: System
-    crystal_origin    :: Crystal
+    sys_origin        :: System
     contraction_info  :: CrystalContractionInfo
-    Ns_unit           :: Vector{Vector{Int64}}   # This eliminates need to carry original system around in many places
+    Ns_unit           :: Vector{Vector{Int64}}   # This eliminates need to carry original system around in many places -- now that system is there, possibly eliminate
 end
 
 function EntangledSystem(sys, units)
     (; sys_entangled, contraction_info, Ns_unit) = entangle_system(sys, units)
-    EntangledSystem(sys_entangled, orig_crystal(sys), contraction_info, Ns_unit)
+    sys_origin = clone_system(sys)
+    EntangledSystem(sys_entangled, sys_origin, contraction_info, Ns_unit)
 end
 
 
 ################################################################################
-# Aliases
+# Aliasing and field forwarding
 ################################################################################
+
+# 
 randomize_spins!(esys::EntangledSystem; kwargs...) = randomize_spins!(esys.sys; kwargs...)
 minimize_energy!(esys::EntangledSystem; kwargs...) = minimize_energy!(esys.sys; kwargs...)
-plot_spins(esys::EntangledSystem; kwargs...) = plot_spins(esys.sys; kwargs...)
+
+# Temporary until better observable approach for classical
+function plot_spins(esys::EntangledSystem; kwargs...)
+    expected_dipoles_of_entangled_system!(esys.sys_origin.dipoles, esys)
+    plot_spins(esys.sys_origin; kwargs...)
+end
+
+# Forward field requests to internal system
+function Base.getproperty(value::EntangledSystem, name::Symbol)
+    if name ∉ [:sys, :sys_origin, :contraction_info, :Ns_unit] 
+        return getfield(value.sys, name)
+    end
+    return getfield(value, name)
+end
+function Base.setproperty!(value::EntangledSystem, name::Symbol, x)
+    if name ∉ [:sys, :sys_origin, :contraction_info, :Ns_unit] 
+        return setfield!(value.sys, name, convert(fieldtype(System, name), x))
+    end
+    return setfield!(value, name, convert(fieldtype(EntangledSystem, name), x))
+end
