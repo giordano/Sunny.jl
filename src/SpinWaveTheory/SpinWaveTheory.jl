@@ -66,40 +66,6 @@ function to_reshaped_rlu(sys::System{N}, q) where N
     return sys.crystal.recipvecs \ (orig_crystal(sys).recipvecs * q)
 end
 
-# Take PairCoupling `pc` and use it to make a new, equivalent PairCoupling that
-# contains all information about the interaction in the `general` (tensor
-# decomposition) field.
-function as_general_pair_coupling(pc, sys)
-    (; isculled, bond, scalar, bilin, biquad, general) = pc
-    N1 = sys.Ns[bond.i]
-    N2 = sys.Ns[bond.j]
-
-    accum = zeros(ComplexF64, N1*N2, N1*N2)
-
-    # Add scalar part
-    accum += scalar * I
-
-    # Add bilinear part
-    S1, S2 = to_product_space(spin_matrices((N1-1)/2), spin_matrices((N2-1)/2))
-    J = bilin isa Float64 ? bilin*I(3) : bilin
-    accum += S1' * J * S2
-
-    # Add biquadratic part
-    K = biquad isa Float64 ? diagm(biquad * Sunny.scalar_biquad_metric) : biquad
-    O1, O2 = to_product_space(stevens_matrices_of_dim(2; N=N1), stevens_matrices_of_dim(2; N=N2))
-    accum += O1' * K * O2
-
-    # Add general part
-    for (A, B) in general.data
-        accum += kron(A, B) 
-    end
-
-    # Generate new interaction with extract_parts=false 
-    scalar, bilin, biquad, general = decompose_general_coupling(accum, N1, N2; extract_parts=false)
-
-    return PairCoupling(isculled, bond, scalar, bilin, biquad, general)
-end
-
 function rotate_general_coupling_into_local_frame(pc, U1, U2)
     (; isculled, bond, scalar, bilin, biquad, general) = pc
     data_new = map(general.data) do (A, B)

@@ -49,6 +49,9 @@ end
 # 
 randomize_spins!(esys::EntangledSystem; kwargs...) = randomize_spins!(esys.sys; kwargs...)
 minimize_energy!(esys::EntangledSystem; kwargs...) = minimize_energy!(esys.sys; kwargs...)
+energy(esys::EntangledSystem; kwargs...) = energy(esys.sys; kwargs...)
+set_coherent!(esys::EntangledSystem, coherent, site; kwargs...) = set_coherent!(esys.sys, coherent, site; kwargs...)
+eachsite(esys::EntangledSystem) = eachsite(esys.sys)
 
 # Temporary until better observable approach for classical
 function plot_spins(esys::EntangledSystem; kwargs...)
@@ -69,3 +72,7 @@ function Base.setproperty!(value::EntangledSystem, name::Symbol, x)
     end
     return setfield!(value, name, convert(fieldtype(EntangledSystem, name), x))
 end
+
+
+# TODO
+# set_external_field!(esys, B)

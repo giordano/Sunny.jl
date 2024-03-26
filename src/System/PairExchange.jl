@@ -442,6 +442,65 @@ function set_pair_coupling_at!(sys::System{N}, fn::Function, site1::Site, site2:
     return
 end
 
+# Take PairCoupling `pc` and use it to make a new, equivalent PairCoupling that
+# contains all information about the interaction in the `general` (tensor
+# decomposition) field.
+function as_general_pair_coupling(pc, sys)
+    (; isculled, bond, scalar, bilin, biquad, general) = pc
+    N1 = sys.Ns[bond.i]
+    N2 = sys.Ns[bond.j]
+
+    accum = zeros(ComplexF64, N1*N2, N1*N2)
+
+    # Add scalar part
+    accum += scalar * I
+
+    # Add bilinear part
+    S1, S2 = to_product_space(spin_matrices((N1-1)/2), spin_matrices((N2-1)/2))
+    J = bilin isa Float64 ? bilin*I(3) : bilin
+    accum += S1' * J * S2
+
+    # Add biquadratic part
+    K = biquad isa Float64 ? diagm(biquad * Sunny.scalar_biquad_metric) : biquad
+    O1, O2 = to_product_space(stevens_matrices_of_dim(2; N=N1), stevens_matrices_of_dim(2; N=N2))
+    accum += O1' * K * O2
+
+    # Add general part
+    for (A, B) in general.data
+        accum += kron(A, B) 
+    end
+
+    # Generate new interaction with extract_parts=false 
+    scalar, bilin, biquad, general = decompose_general_coupling(accum, N1, N2; extract_parts=false)
+
+    return PairCoupling(isculled, bond, scalar, bilin, biquad, general)
+end
+
+# Take a PairCouplingn `pc` and return as a single operator in the tensor product
+# space associated with that bond.
+function as_bond_operator(pc, sys; threshold=1e-16)
+
+    # Reconstruct bond operator from tensor decomposition
+    pc = as_general_pair_coupling(pc, sys)
+    data = pc.general.data
+    A, B = data[1]
+    N1, N2 = size(A, 1), size(B, 1)
+    op = zeros(ComplexF64, N1*N2, N1*N2)
+    for (A, B) in data
+        op .+= kron(A, B)
+    end
+
+    # Filter out small numerical artifacts from tensor decomposition.
+    op = map(op) do x
+        r, c = real(x), imag(x)
+        r = r < threshold ? 0.0 : r
+        c = c < threshold ? 0.0 : c
+        r + im*c
+    end
+
+    return op
+end
+
 
 """
     remove_periodicity!(sys::System, dims)
