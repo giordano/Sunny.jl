@@ -117,6 +117,11 @@ end
 # Pull out original indices of sites in entangled unit
 sites_in_unit(contraction_info, i) = [inverse_data.site for inverse_data in contraction_info.inverse[i]] 
 
+function original_units(esys::EntangledSystem)
+    (; sys, contraction_info) = esys
+    return [Tuple(sites_in_unit(contraction_info, unit)) for unit in axes(sys.dipoles, 4)]
+end
+
 # List of all pair-wise bonds in a unit. The resulting bonds are to be
 # interpreted in terms of the original crystal.
 function bonds_in_unit(contraction_info, i)
@@ -466,7 +471,12 @@ function expected_dipoles_of_entangled_system!(dipole_buf, esys::EntangledSystem
         end
     end
 end
-expected_dipoles_of_entangled_system!(sys_original, sys_entangled) = expected_dipoles_of_entangled_system!(sys_original.dipoles, sys_entangled)
+
+function sync_dipoles(esys::EntangledSystem)
+    esys.synced && return true
+    expected_dipoles_of_entangled_system!(esys.sys_origin.dipoles, esys)
+    esys.synced = true
+end
 
 
 # TODO: Write this function:
