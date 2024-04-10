@@ -15,9 +15,9 @@ function units_for_reshaped_system(reshaped_sys_origin, esys)
 
     # Take a list of all the sites in the reshaped system. Pick the first. Map
     # it back to the original system to determine what unit it belongs to. Then
-    # map forward again to define the unit in terms of the atoms of the reshaped
-    # system. Remove the atoms from the list of sites left to be "entangled" and
-    # repeat.
+    # map all members of the unit forward to define the unit in terms of the
+    # atoms of the reshaped system. Remove the atoms from the list of sites left
+    # to be "entangled" and repeat.
     while length(new_atoms) > 0
         # Pick any site from list of new sites
         new_atom = new_atoms[1]
@@ -41,7 +41,7 @@ function units_for_reshaped_system(reshaped_sys_origin, esys)
         for new_site in new_unit_sites
             i, j, k, a = new_site.I
             if !(i == j == k == 1)
-                error("Specified reshaping incomptable with specified entangled units. (Unit split between unit cells.)")
+                error("Specified reshaping incomptable with specified entangled units. (Unit split between crystalographic unit cells.)")
             end
             push!(new_unit, a)
         end
