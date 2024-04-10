@@ -125,14 +125,14 @@ Additional keyword options are the following:
 """
 function dynamical_correlations(sys::System{N}; dt=nothing, Δt=nothing, nω, ωmax,
                                 apply_g=true, observables=nothing, correlations=nothing,
-                                calculate_errors=false, process_trajectory=:none) where N
+                                calculate_errors=false, process_trajectory=:none, force_dipole=false) where N
     if !isnothing(Δt)
         @warn "`Δt` argument is deprecated! Use `dt` instead."
         dt = @something dt Δt
     end
     isnothing(dt) && error("`dt` parameter required")
 
-    observables = parse_observables(N; observables, correlations, g = apply_g ? sys.gs : nothing)
+    observables = parse_observables(force_dipole ? 0 : N; observables, correlations, g = apply_g ? sys.gs : nothing)
 
     # Determine trajectory measurement parameters
     nω = Int64(nω)

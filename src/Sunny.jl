@@ -99,6 +99,7 @@ export SampledCorrelations, dynamical_correlations, instant_correlations, add_sa
 include("Intensities/ElementContraction.jl")
 
 include("EntangledUnits/EntangledSpinWaveTheory.jl")
+include("EntangledUnits/EntangledSampledCorrelations.jl")
 export EntangledSpinWaveTheory
 
 include("Intensities/Interpolation.jl")

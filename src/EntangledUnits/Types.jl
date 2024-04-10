@@ -46,8 +46,8 @@ end
 randomize_spins!(esys::EntangledSystem; kwargs...) = randomize_spins!(esys.sys; kwargs...)
 minimize_energy!(esys::EntangledSystem; kwargs...) = minimize_energy!(esys.sys; kwargs...)
 energy(esys::EntangledSystem; kwargs...) = energy(esys.sys; kwargs...)
-set_coherent!(esys::EntangledSystem, coherent, site; kwargs...) = set_coherent!(esys.sys, coherent, site; kwargs...)
-eachsite(esys::EntangledSystem) = eachsite(esys.sys) # Not sure that we want this
+# set_coherent!(esys::EntangledSystem, coherent, site; kwargs...) = set_coherent!(esys.sys, coherent, site; kwargs...)
+# eachsite(esys::EntangledSystem) = eachsite(esys.sys) # Not sure that we want this
 # TODO: set_external_field!(esys, B)
 
 # Functions acting on original System of an EntangledSystem 
@@ -62,20 +62,20 @@ function plot_spins(esys::EntangledSystem; kwargs...)
 end
 
 # Forward field requests to internal systems.
-function Base.getproperty(value::EntangledSystem, name::Symbol)
-    if name in [:coherents]
-        return getfield(value.sys, name)
-    elseif name in [:dipoles, :crystal]
-        return getfield(value.sys_origin, name)
-    end
-    return getfield(value, name)
-end
-
-function Base.setproperty!(value::EntangledSystem, name::Symbol, x)
-    if name == :coherents 
-        return setfield!(value.sys, name, convert(fieldtype(System, name), x))
-    elseif name == :dipoles
-        error("Cannot set `dipoles` of EntangledSystem directly.")
-    end
-    return setfield!(value, name, convert(fieldtype(EntangledSystem, name), x))
-end
+# function Base.getproperty(value::EntangledSystem, name::Symbol)
+#     if name in [:coherents]
+#         return getfield(value.sys, name)
+#     elseif name in [:dipoles, :crystal, :Ns]
+#         return getfield(value.sys_origin, name)
+#     end
+#     return getfield(value, name)
+# end
+# 
+# function Base.setproperty!(value::EntangledSystem, name::Symbol, x)
+#     if name == :coherents 
+#         return setfield!(value.sys, name, convert(fieldtype(System, name), x))
+#     elseif name == :dipoles
+#         error("Cannot set `dipoles` of EntangledSystem directly.")
+#     end
+#     return setfield!(value, name, convert(fieldtype(EntangledSystem, name), x))
+# end
