@@ -472,10 +472,11 @@ function expected_dipoles_of_entangled_system!(dipole_buf, esys::EntangledSystem
     end
 end
 
-function sync_dipoles(esys::EntangledSystem)
-    esys.synced && return true
+function sync_dipoles!(esys::EntangledSystem)
+    esys.synced && return nothing
     expected_dipoles_of_entangled_system!(esys.sys_origin.dipoles, esys)
     esys.synced = true
+    return nothing
 end
 
 

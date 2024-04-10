@@ -66,6 +66,7 @@ export reshape_supercell, resize_supercell, repeat_periodically
 
 include("EntangledUnits/Types.jl")
 include("EntangledUnits/EntangledUnits.jl")
+include("EntangledUnits/EntangledReshaping.jl")
 export contract_crystal, EntangledSystem, expected_dipoles_of_entangled_system!
 
 include("Integrators.jl")

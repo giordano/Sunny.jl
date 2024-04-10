@@ -8,6 +8,7 @@ struct EntangledSpinWaveTheory # Could just expand union above, but type now ava
     sys              :: System
     crystal_origin   :: Crystal
     contraction_info :: CrystalContractionInfo
+    Ns_unit          :: Vector{Vector{Int64}}
     data             :: SWTDataEntangled
     energy_ϵ         :: Float64
     observables      :: ObservableInfo
@@ -37,14 +38,19 @@ function EntangledSpinWaveTheory(esys::EntangledSystem; energy_ϵ::Float64=1e-8,
     cellsize_mag = cell_shape(sys) * diagm(Vec3(sys.latsize))
     sys_reshaped = reshape_supercell_aux(sys, (1,1,1), cellsize_mag)
 
-    # Note: will need to write reshaping functions for contraction info in most general case.
+    cellsize_original = cell_shape(sys_origin) * diagm(Vec3(sys_origin.latsize))
+    sys_origin_reshaped = reshape_supercell_aux(sys_origin, (1,1,1), cellsize_original)
+
+    new_units = units_for_reshaped_crystal(sys_origin_reshaped, esys)
+    _, new_contraction_info = contract_crystal(sys_origin_reshaped.crystal, new_units)
+    Ns_unit_new = Ns_in_units(sys_origin_reshaped, new_contraction_info)
 
     # Rotate local operators to quantization axis
     N = esys.sys.Ns[1]
     obs = parse_observables(N; observables, correlations, g = apply_g ? sys.gs : nothing)
-    data = swt_data_entangled(sys_reshaped, esys, obs)
+    data = swt_data_entangled(sys_reshaped, Ns_unit_new, new_contraction_info, obs)
 
-    return EntangledSpinWaveTheory(sys_reshaped, crystal_origin, esys.contraction_info, data, energy_ϵ, obs)
+    return EntangledSpinWaveTheory(sys_reshaped, crystal_origin, new_contraction_info, Ns_unit_new, data, energy_ϵ, obs)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", swt::EntangledSpinWaveTheory)
@@ -61,18 +67,18 @@ function to_reshaped_rlu(esys::EntangledSystem, q)
 end
 
 # obs are observables _given in terms of `sys_original`_
-function swt_data_entangled(sys::System, esys::EntangledSystem, obs)
-    (; contraction_info, Ns_unit) = esys
-    N = esys.sys.Ns[1]
+function swt_data_entangled(sys::System, Ns_unit, contraction_info, obs)
+    N = sys.Ns[1]
     
     # Calculate transformation matrices into local reference frames
     nunits = natoms(sys.crystal)
 
     # Check to make sure all "units" are the same -- this can be generalized later.
     sites_per_unit = [length(info) for info in contraction_info.inverse]
-    Ns_contracted = map(Ns -> prod(Ns), Ns_unit)
     @assert allequal(sites_per_unit) "All units must have the same number of interior sites"
     sites_per_unit = sites_per_unit[1]
+
+    Ns_contracted = map(Ns -> prod(Ns), Ns_unit)
     @assert allequal(Ns_contracted) "All units must have the same dimension local Hilbert space"
     @assert Ns_contracted[1] == N "Unit dimension inconsistent with system"  # Sanity check. This should never happen. 
 
