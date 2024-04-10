@@ -35,22 +35,26 @@ function EntangledSpinWaveTheory(esys::EntangledSystem; energy_ϵ::Float64=1e-8,
         ]
     end
 
+    # Reshape the entangled system so that it is a single unit cell.
     cellsize_mag = cell_shape(sys) * diagm(Vec3(sys.latsize))
     sys_reshaped = reshape_supercell_aux(sys, (1,1,1), cellsize_mag)
 
+    # Reshape the original system in a corresponding fashion
     cellsize_original = cell_shape(sys_origin) * diagm(Vec3(sys_origin.latsize))
     sys_origin_reshaped = reshape_supercell_aux(sys_origin, (1,1,1), cellsize_original)
 
+    # Construct the new contraction_info (i.e. reconstruct maps between
+    # entangled and unentangled systems)
     new_units = units_for_reshaped_crystal(sys_origin_reshaped, esys)
     _, new_contraction_info = contract_crystal(sys_origin_reshaped.crystal, new_units)
-    Ns_unit_new = Ns_in_units(sys_origin_reshaped, new_contraction_info)
+    new_Ns_unit = Ns_in_units(sys_origin_reshaped, new_contraction_info)
 
     # Rotate local operators to quantization axis
     N = esys.sys.Ns[1]
     obs = parse_observables(N; observables, correlations, g = apply_g ? sys.gs : nothing)
-    data = swt_data_entangled(sys_reshaped, Ns_unit_new, new_contraction_info, obs)
+    data = swt_data_entangled(sys_reshaped, new_Ns_unit, new_contraction_info, obs)
 
-    return EntangledSpinWaveTheory(sys_reshaped, crystal_origin, new_contraction_info, Ns_unit_new, data, energy_ϵ, obs)
+    return EntangledSpinWaveTheory(sys_reshaped, crystal_origin, new_contraction_info, new_Ns_unit, data, energy_ϵ, obs)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", swt::EntangledSpinWaveTheory)
