@@ -45,7 +45,7 @@ function EntangledSpinWaveTheory(esys::EntangledSystem; energy_ϵ::Float64=1e-8,
 
     # Construct the new contraction_info (i.e. reconstruct maps between
     # entangled and unentangled systems)
-    new_units = units_for_reshaped_crystal(sys_origin_reshaped, esys)
+    new_units = units_for_reshaped_system(sys_origin_reshaped, esys)
     _, new_contraction_info = contract_crystal(sys_origin_reshaped.crystal, new_units)
     new_Ns_unit = Ns_in_units(sys_origin_reshaped, new_contraction_info)
 
