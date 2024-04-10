@@ -1,5 +1,5 @@
-#TODO: Test this rigorously -- this key to reshaping EntangledSystems and making
-# EntangledSpinWaveTheorys. 
+#TODO: Test this rigorously -- this is key to reshaping EntangledSystems and
+# making EntangledSpinWaveTheorys. 
 
 # An entangled system can be specified with a list of
 # tuples, e.g. [(1,2), (3,4)], which will group the original sites 1 and 2 into
@@ -40,7 +40,8 @@ function units_for_reshaped_system(reshaped_sys_origin, esys)
         for new_site in new_unit_sites
             i, j, k, a = new_site.I
             if !(i == j == k == 1)
-                # Note sure if this can actually happen. But if it does happen, it's
+                # Note sure if this can actually happen (i.e. whether an allowed
+                # reshaping can make this happen). But if it does happen, it's
                 # certainly bad.
                 error("Specified reshaping incompatible with specified entangled units. (Unit split between crystalographic unit cells.)")
             end
@@ -59,17 +60,18 @@ end
 
 function reshape_supercell(esys::EntangledSystem, shape)
     (; sys, sys_origin) = esys
+
+    # Reshape the origin System.
     new_sys_origin = reshape_supercell(sys_origin, shape)
 
-    new_units = units_for_reshaped_crystal(new_sys_origin, esys)
-
-    # Construct new ContractionInfo for reshaped system
+    # Reshape the the underlying "entangled" System.
+    new_units = units_for_reshaped_system(new_sys_origin, esys)
     _, contraction_info = contract_crystal(new_sys_origin.crystal, new_units)
-
-    # Reshape the entangled system as well
     new_sys = reshape_supercell(sys, shape)
+    # TODO: Add assertion test that crystal of new_sys matches ignored crystal
+    # output of contract_crystal.
 
-    # Create entangled system with reshaped systems and updated contraction_fino
+    # Construct a new EntangledSystem
     new_esys = EntangledSystem(new_sys, new_sys_origin, false, contraction_info, Ns_in_units(new_sys_origin, contraction_info))
     sync_dipoles!(new_esys)
 

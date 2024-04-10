@@ -1,8 +1,8 @@
 # Data for mapping one site inside a unit back to the site of the original
 # system.
 struct InverseData
-    site   :: Int64
-    offset :: Vec3
+    site   :: Int64  # Atom index of original, uncontracted crystal
+    offset :: Vec3   # Position offset of original atom relative to center of unit
 end
 
 # `forward` contains a list from sites of the original crystal to a site of the
@@ -23,25 +23,20 @@ struct CrystalContractionInfo
     inverse :: Vector{Vector{InverseData}}  # List ordered according to contracted crystal sites. Each element is itself a list containing original crystal site indices and corresponding offset information 
 end
 
-# struct EntanglementData
-#     contraction_info  :: CrystalContractionInfo
-#     Ns_unit           :: Vector{Vector{Int64}}   # This eliminates need to carry original system around in many places
-# end
-
 mutable struct EntangledSystem
-    const sys               :: System
-    const sys_origin        :: System
-    synced                  :: Bool
-    const contraction_info  :: CrystalContractionInfo
-    const Ns_unit           :: Vector{Vector{Int64}}   # This eliminates need to carry original system around in many places -- now that system is there, possibly eliminate
+    const sys               :: System                  # System containing entangled units
+    const sys_origin        :: System                  # Original "uncontracted" system
+    const contraction_info  :: CrystalContractionInfo  # Forward and inverse mapping data for sys <-> sys_origin
+    synced                  :: Bool                    # Is sys_origin.dipoles synced with sys 
 end
 
 function EntangledSystem(sys, units)
-    (; sys_entangled, contraction_info, Ns_unit) = entangle_system(sys, units)
+    (; sys_entangled, contraction_info) = entangle_system(sys, units)
     sys_origin = clone_system(sys)
-    EntangledSystem(sys_entangled, sys_origin, false, contraction_info, Ns_unit)
+    esys = EntangledSystem(sys_entangled, sys_origin, contraction_info, false)
+    sync_dipoles!(esys)
+    return esys
 end
-
 
 ################################################################################
 # Aliasing and field forwarding
@@ -53,10 +48,12 @@ minimize_energy!(esys::EntangledSystem; kwargs...) = minimize_energy!(esys.sys; 
 energy(esys::EntangledSystem; kwargs...) = energy(esys.sys; kwargs...)
 set_coherent!(esys::EntangledSystem, coherent, site; kwargs...) = set_coherent!(esys.sys, coherent, site; kwargs...)
 eachsite(esys::EntangledSystem) = eachsite(esys.sys) # Not sure that we want this
+# TODO: set_external_field!(esys, B)
 
 # Functions acting on original System of an EntangledSystem 
 set_dipole!(esys::EntangledSystem, dipole, site; kwargs...) = error("Setting dipoles of an EntangledSystem not well defined.") # Could replicate behavior of normal SU(N) system
 function magnetic_moment(esys::EntangledSystem, site; kwargs...) 
+    sync_dipoles!(esys)
     magnetic_moment(esys.sys_origin, site; kwargs...)
 end
 function plot_spins(esys::EntangledSystem; kwargs...)
@@ -64,12 +61,7 @@ function plot_spins(esys::EntangledSystem; kwargs...)
     plot_spins(esys.sys_origin; kwargs...)
 end
 
-
-
-# Functions acting on both systems
-
-
-# Forward field requests to internal system
+# Forward field requests to internal systems.
 function Base.getproperty(value::EntangledSystem, name::Symbol)
     if name in [:coherents]
         return getfield(value.sys, name)
@@ -78,6 +70,7 @@ function Base.getproperty(value::EntangledSystem, name::Symbol)
     end
     return getfield(value, name)
 end
+
 function Base.setproperty!(value::EntangledSystem, name::Symbol, x)
     if name == :coherents 
         return setfield!(value.sys, name, convert(fieldtype(System, name), x))
@@ -86,7 +79,3 @@ function Base.setproperty!(value::EntangledSystem, name::Symbol, x)
     end
     return setfield!(value, name, convert(fieldtype(EntangledSystem, name), x))
 end
-
-
-# TODO
-# set_external_field!(esys, B)

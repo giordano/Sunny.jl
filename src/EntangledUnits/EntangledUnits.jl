@@ -355,7 +355,7 @@ function entangle_system(sys::System{M}, units) where M
         set_pair_coupling!(sys_entangled, bond_operator, bond)
     end
 
-    return (; sys_entangled, contraction_info, Ns_unit)
+    return (; sys_entangled, contraction_info)
 end
 
 function entangle_system_new(sys::System{M}, units) where M
@@ -449,7 +449,8 @@ end
 
 # Make optimized version (both loop order and possibly generated functions).
 function expected_dipoles_of_entangled_system!(dipole_buf, esys::EntangledSystem)
-    (; sys, contraction_info, Ns_unit) = esys
+    (; sys, sys_origin, contraction_info) = esys
+    Ns_unit = Ns_in_units(sys_origin, contraction_info)
     expectation(op, Z) = real(Z' * op * Z)
 
     for contracted_site in Sunny.eachsite(sys)

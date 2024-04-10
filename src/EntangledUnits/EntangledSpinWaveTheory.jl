@@ -15,7 +15,7 @@ struct EntangledSpinWaveTheory # Could just expand union above, but type now ava
 end
 
 function EntangledSpinWaveTheory(esys::EntangledSystem; energy_ϵ::Float64=1e-8, observables=nothing, correlations=nothing, apply_g = true)
-    (; sys, Ns_unit, sys_origin) = esys
+    (; sys, sys_origin) = esys
     crystal_origin = orig_crystal(sys_origin)
     if !isnothing(sys.ewald)
         error("SpinWaveTheory does not yet support long-range dipole-dipole interactions.")
@@ -24,7 +24,7 @@ function EntangledSpinWaveTheory(esys::EntangledSystem; energy_ϵ::Float64=1e-8,
     # Could move this to parse_observables, but then parse_observables would have to know about EntanglementData
     if isnothing(observables)
         # Note that the observables must have dimensions consistent with the original system
-        Ns_original = vcat(Ns_unit...)
+        Ns_original = vcat(Ns_in_units(sys_origin, esys.contraction_info)...)
         @assert allequal(Ns_original) "All local Hilbert spaces of original system must have identical dimension"
         N_original = Ns_original[1]
         S = spin_matrices((N_original-1)/2)
