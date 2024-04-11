@@ -447,8 +447,8 @@ function entangle_system_new(sys::System{M}, units) where M
 end
 
 
-# Make optimized version (both loop order and possibly generated functions).
-function expected_dipoles_of_entangled_system!(dipole_buf, esys::EntangledSystem)
+# TODO: Make a serious version of this (i.e., optimized) 
+function set_expected_dipoles_of_entangled_system!(dipole_buf, esys::EntangledSystem)
     (; sys, sys_origin, contraction_info) = esys
     Ns_unit = Ns_in_units(sys_origin, contraction_info)
     expectation(op, Z) = real(Z' * op * Z)
@@ -457,7 +457,7 @@ function expected_dipoles_of_entangled_system!(dipole_buf, esys::EntangledSystem
         i, j, k, n = contracted_site.I
         Ns = Ns_unit[n]
 
-        # This iteration will be slow because it's on the last index...
+        # This is currently dumb 
         for (m, (; site)) in enumerate(contraction_info.inverse[n])
             S = spin_matrices((Ns[m]-1)/2)
             Sx = local_op_to_product_space(S[1], m, Ns)
@@ -473,12 +473,28 @@ function expected_dipoles_of_entangled_system!(dipole_buf, esys::EntangledSystem
     end
 end
 
-function sync_dipoles!(esys::EntangledSystem)
-    expected_dipoles_of_entangled_system!(esys.sys_origin.dipoles, esys)
-    esys.synced = true
-    return nothing
-end
+# TODO: Make serious version of this as low-level function for above.
+function set_expected_dipole_of_entangled_system!(dipole_buf, esys::EntangledSystem, esite)
+    (; sys, sys_origin, contraction_info) = esys
+    Ns_unit = Ns_in_units(sys_origin, contraction_info)
+    expectation(op, Z) = real(Z' * op * Z)
 
+    i, j, k, n = esite.I
+    Ns = Ns_unit[n]
+
+    for (m, (; site)) in enumerate(contraction_info.inverse[n])
+        S = spin_matrices((Ns[m]-1)/2)
+        Sx = local_op_to_product_space(S[1], m, Ns)
+        Sy = local_op_to_product_space(S[2], m, Ns)
+        Sz = local_op_to_product_space(S[3], m, Ns)
+        dipole = Sunny.Vec3(
+            expectation(Sx, sys.coherents[esite]),
+            expectation(Sy, sys.coherents[esite]),
+            expectation(Sz, sys.coherents[esite]),
+        )
+        dipole_buf[i, j, k, site] = dipole
+    end
+end
 
 # TODO: Write this function:
 # function expected_observables_of_entangled_system!(sys, observables, sys_entangled, entanglement_data)

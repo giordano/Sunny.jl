@@ -3,33 +3,17 @@ struct EntangledSampledCorrelations
     esys::EntangledSystem
 end
 
-function Base.getproperty(value::EntangledSampledCorrelations, name::Symbol)
-    if name in [:sc, :esys]
-        return getfield(value, name)
-    end
-    return getfield(value.sc, name)
-end
-
-# # Do we even want this?
-# function Base.setproperty!(value::EntangledSampledCorrelations, name::Symbol, x)
-#     if name in [:sc, :esys]
-#         return setfield!(value, name, convert(fieldtype(EntangledSampledCorrelations, name), x))
-#     end
-#     return setfield!(value.sc, name, convert(fieldtype(SampledCorrelations, name), x))
-# end
-
 # TODO: Write Base.show methods
 
-function instant_correlations(esys::EntangledSystem; kwargs...)
-    # TODO: Add test to make sure observables are dipoles
-    sc = dynamical_correlations(esys.sys_origin; dt=NaN, ωmax=NaN, kwargs...)
-    EntangledSampledCorrelations(sc, esys)
-end
-
-function dynamical_correlations(esys::EntangledSystem; apply_g=true, kwargs...)
+function dynamical_correlations(esys::EntangledSystem; kwargs...)
     # TODO: Add test to make sure observables are dipoles
     sc = dynamical_correlations(esys.sys_origin; observables=nothing, correlations=nothing, force_dipole = true, kwargs...)
     EntangledSampledCorrelations(sc, esys)
+end
+
+function instant_correlations(esys::EntangledSystem; kwargs...)
+    # TODO: Add test to make sure observables are dipoles
+    dynamical_correlations(esys; dt=NaN, ωmax=NaN, nω=1, kwargs...)
 end
 
 available_energies(esc::EntangledSampledCorrelations) = available_energies(esc.sc)
@@ -64,7 +48,7 @@ end
 
 function step!(esys::EntangledSystem, integrator)
     step!(esys.sys, integrator)
-    sync_dipoles!(esys)
+    set_expected_dipoles_of_entangled_system!(esys.sys_origin.dipoles, esys)
 end
 
 function trajectory!(buf, esys::EntangledSystem, dt, nsnaps, ops; measperiod = 1)
@@ -101,6 +85,10 @@ end
 
 function intensities_interpolated(esc::EntangledSampledCorrelations, qs, formula; kwargs...)
     intensities_interpolated(esc.sc, qs, formula; kwargs...)
+end
+
+function instant_intensities_interpolated(esc::EntangledSampledCorrelations, qs, formula; kwargs...)
+    instant_intensities_interpolated(esc.sc, qs, formula; kwargs...)
 end
 
 # TODO: Classical intensity formulas

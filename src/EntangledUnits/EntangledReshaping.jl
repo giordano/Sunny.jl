@@ -68,19 +68,15 @@ function reshape_supercell(esys::EntangledSystem, shape)
     new_units = units_for_reshaped_system(new_sys_origin, esys)
     _, contraction_info = contract_crystal(new_sys_origin.crystal, new_units)
     new_sys = reshape_supercell(sys, shape)
-    # TODO: Add assertion test that crystal of new_sys matches ignored crystal
-    # output of contract_crystal.
 
     # Construct a new EntangledSystem
-    new_esys = EntangledSystem(new_sys, new_sys_origin, false, contraction_info, Ns_in_units(new_sys_origin, contraction_info))
-    sync_dipoles!(new_esys)
+    new_esys = EntangledSystem(new_sys, new_sys_origin, contraction_info)
 
     return new_esys
 end
 
 function repeat_periodically(esys, counts)
-    sync_dipoles!(esys)
     sys_new = repeat_periodically(esys.sys, counts)
     sys_origin_new = repeat_periodically(esys.sys_origin, counts)
-    return EntangledSystem(sys_new, sys_origin_new, true, esys.contraction_info, esys.Ns_unit)
+    return EntangledSystem(sys_new, sys_origin_new, esys.contraction_info)
 end

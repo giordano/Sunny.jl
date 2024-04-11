@@ -23,59 +23,48 @@ struct CrystalContractionInfo
     inverse :: Vector{Vector{InverseData}}  # List ordered according to contracted crystal sites. Each element is itself a list containing original crystal site indices and corresponding offset information 
 end
 
-mutable struct EntangledSystem
-    const sys               :: System                  # System containing entangled units
-    const sys_origin        :: System                  # Original "uncontracted" system
-    const contraction_info  :: CrystalContractionInfo  # Forward and inverse mapping data for sys <-> sys_origin
-    synced                  :: Bool                    # Is sys_origin.dipoles synced with sys 
+struct EntangledSystem
+    sys               :: System                  # System containing entangled units
+    sys_origin        :: System                  # Original "uncontracted" system
+    contraction_info  :: CrystalContractionInfo  # Forward and inverse mapping data for sys <-> sys_origin
 end
 
 function EntangledSystem(sys, units)
     (; sys_entangled, contraction_info) = entangle_system(sys, units)
     sys_origin = clone_system(sys)
-    esys = EntangledSystem(sys_entangled, sys_origin, contraction_info, false)
-    sync_dipoles!(esys)
+    esys = EntangledSystem(sys_entangled, sys_origin, contraction_info)
+    set_expected_dipoles_of_entangled_system!(sys.dipoles, esys)
     return esys
 end
 
-################################################################################
-# Aliasing and field forwarding
-################################################################################
+function randomize_spins!(esys::EntangledSystem; kwargs...) 
+    randomize_spins!(esys.sys; kwargs...)
+    set_expected_dipoles_of_entangled_system!(esys.sys_origin.dipoles, esys)
+end
 
-# Functions to access System fields of EntangledSystem
-randomize_spins!(esys::EntangledSystem; kwargs...) = randomize_spins!(esys.sys; kwargs...)
-minimize_energy!(esys::EntangledSystem; kwargs...) = minimize_energy!(esys.sys; kwargs...)
+function minimize_energy!(esys::EntangledSystem; kwargs...)
+    minimize_energy!(esys.sys; kwargs...)
+    set_expected_dipoles_of_entangled_system!(esys.sys_origin.dipoles, esys)
+end
+
 energy(esys::EntangledSystem; kwargs...) = energy(esys.sys; kwargs...)
-# set_coherent!(esys::EntangledSystem, coherent, site; kwargs...) = set_coherent!(esys.sys, coherent, site; kwargs...)
-# eachsite(esys::EntangledSystem) = eachsite(esys.sys) # Not sure that we want this
+
+set_dipole!(esys::EntangledSystem, dipole, site; kwargs...) = error("Setting dipoles of an EntangledSystem not well defined.") # Could replicate behavior of normal SU(N) system
+
+function set_coherent!(esys::EntangledSystem, coherent, site; kwargs...) 
+    set_coherent!(esys.sys, coherent, site; kwargs...)
+    set_expected_dipole_of_entangled_system!(esys.sys_origin.dipoles, esys, site)
+end
+
+eachsite(esys::EntangledSystem) = eachsite(esys.sys) # Not sure that we want this
+
 # TODO: set_external_field!(esys, B)
 
-# Functions acting on original System of an EntangledSystem 
-set_dipole!(esys::EntangledSystem, dipole, site; kwargs...) = error("Setting dipoles of an EntangledSystem not well defined.") # Could replicate behavior of normal SU(N) system
+
 function magnetic_moment(esys::EntangledSystem, site; kwargs...) 
-    sync_dipoles!(esys)
     magnetic_moment(esys.sys_origin, site; kwargs...)
 end
+
 function plot_spins(esys::EntangledSystem; kwargs...)
-    sync_dipoles!(esys)
     plot_spins(esys.sys_origin; kwargs...)
 end
-
-# Forward field requests to internal systems.
-# function Base.getproperty(value::EntangledSystem, name::Symbol)
-#     if name in [:coherents]
-#         return getfield(value.sys, name)
-#     elseif name in [:dipoles, :crystal, :Ns]
-#         return getfield(value.sys_origin, name)
-#     end
-#     return getfield(value, name)
-# end
-# 
-# function Base.setproperty!(value::EntangledSystem, name::Symbol, x)
-#     if name == :coherents 
-#         return setfield!(value.sys, name, convert(fieldtype(System, name), x))
-#     elseif name == :dipoles
-#         error("Cannot set `dipoles` of EntangledSystem directly.")
-#     end
-#     return setfield!(value, name, convert(fieldtype(EntangledSystem, name), x))
-# end
