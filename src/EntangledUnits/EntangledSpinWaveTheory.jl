@@ -226,7 +226,7 @@ function intensity_formula(f::Function, swt::EntangledSpinWaveTheory, corr_ix::A
             Avec_pref[i] = sqrt_nunits_inv * phase
 
             # TODO: FormFactors for entangled units 
-            # Avec_pref[i] *= compute_form_factor(ff_atoms[i], q_absolute⋅q_absolute)
+            # Avec_pref[i] *= compute_form_factor(ff_atoms[i], q_absolute⋅q_absolute)  # I think this may simply be uncommented
         end
 
         # Fill `intensity` array

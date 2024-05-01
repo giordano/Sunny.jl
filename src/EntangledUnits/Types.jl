@@ -43,8 +43,9 @@ function randomize_spins!(esys::EntangledSystem; kwargs...)
 end
 
 function minimize_energy!(esys::EntangledSystem; kwargs...)
-    minimize_energy!(esys.sys; kwargs...)
+    optout = minimize_energy!(esys.sys; kwargs...)
     set_expected_dipoles_of_entangled_system!(esys.sys_origin.dipoles, esys)
+    return optout
 end
 
 energy(esys::EntangledSystem; kwargs...) = energy(esys.sys; kwargs...)
