@@ -496,5 +496,25 @@ function set_expected_dipole_of_entangled_system!(dipole_buf, esys::EntangledSys
     end
 end
 
-# TODO: Write this function:
-# function expected_observables_of_entangled_system!(sys, observables, sys_entangled, entanglement_data)
+# TODO: Generalize to inhomogenous case
+expectation(op, Z) = real(Z' * op * Z)
+function spin_operators_for_entangled_system(esys)
+    (; sys_origin, contraction_info) = esys
+    Ns_unit = Ns_in_units(sys_origin, contraction_info)
+
+    spin_operators_all = []
+    for atom in 1:natoms(sys_origin.crystal)
+        unit, unit_idx = contraction_info.forward[atom]
+        S = spin_matrices((Ns_unit[unit][unit_idx]-1)/2)
+        Sx = local_op_to_product_space(S[1], unit_idx, Ns_unit[unit])
+        Sy = local_op_to_product_space(S[2], unit_idx, Ns_unit[unit])
+        Sz = local_op_to_product_space(S[3], unit_idx, Ns_unit[unit])
+        push!(spin_operators_all, [Sx, Sy, Sz])
+    end
+
+    return spin_operators_all
+end
+
+function expected_entangled_spin(ops, Z)
+    return Vec3(expectation(op[1], Z), expectation(ops[2], Z), expectation(ops[3], Z))
+end

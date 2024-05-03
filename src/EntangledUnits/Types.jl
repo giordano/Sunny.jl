@@ -50,7 +50,7 @@ end
 
 energy(esys::EntangledSystem; kwargs...) = energy(esys.sys; kwargs...)
 
-set_dipole!(esys::EntangledSystem, dipole, site; kwargs...) = error("Setting dipoles of an EntangledSystem not well defined.") # Could replicate behavior of normal SU(N) system
+set_dipole!(esys::EntangledSystem, dipole, site; kwargs...) = error("Setting dipoles of an EntangledSystem not well defined.") 
 
 function set_coherent!(esys::EntangledSystem, coherent, site; kwargs...) 
     set_coherent!(esys.sys, coherent, site; kwargs...)

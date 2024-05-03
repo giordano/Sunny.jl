@@ -13,15 +13,16 @@ function units_for_reshaped_system(reshaped_sys_origin, esys)
     new_atoms = collect(1:natoms(new_crystal))
     new_units = []
 
-    # Take a list of all the sites in the reshaped system. Pick the first. Map
-    # it back to the original system to determine what unit it belongs to. Then
-    # map all members of the unit forward to define the unit in terms of the
-    # atoms of the reshaped system. Remove the atoms from the list of sites left
-    # to be "entangled" and repeat until list of new atoms is exhausted.
+    # Take a list of all the new atoms in the reshaped system. Pick the first.
+    # Map it back to the original system to determine what unit it belongs to.
+    # Then map all members of the unit forward to define the unit in terms of
+    # the atoms of the reshaped system. Remove these atoms from the list of
+    # sites left to be "entangled" and repeat until list of new atoms is
+    # exhausted.
     while length(new_atoms) > 0
         # Pick any site from list of new sites
         new_atom = new_atoms[1]
-        new_site = CartesianIndex(1, 1, 1, new_atom) # Just work with first unit cell
+        new_site = CartesianIndex(1, 1, 1, new_atom) # Only need to define for a single unit cell, may as well be the first 
         new_position = position(reshaped_sys_origin, new_site)
 
         # Find corresponding original atom number.
@@ -40,9 +41,6 @@ function units_for_reshaped_system(reshaped_sys_origin, esys)
         for new_site in new_unit_sites
             i, j, k, a = new_site.I
             if !(i == j == k == 1)
-                # Note sure if this can actually happen (i.e. whether an allowed
-                # reshaping can make this happen). But if it does happen, it's
-                # certainly bad.
                 error("Specified reshaping incompatible with specified entangled units. (Unit split between crystalographic unit cells.)")
             end
             push!(new_unit, a)
