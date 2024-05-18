@@ -493,8 +493,8 @@ function as_bond_operator(pc, sys; threshold=1e-16)
     # Filter out small numerical artifacts from tensor decomposition.
     op = map(op) do x
         r, c = real(x), imag(x)
-        r = r < threshold ? 0.0 : r
-        c = c < threshold ? 0.0 : c
+        r = abs(r) < threshold ? 0.0 : r
+        c = abs(c) < threshold ? 0.0 : c
         r + im*c
     end
 

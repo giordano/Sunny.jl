@@ -94,7 +94,8 @@ The first indices of the returned array correspond to those of `qs`. A final
 index, corresponding to mode, is added to these. Each entry of the array is an
 energy.
 """
-function dispersion(swt::SpinWaveTheory, qs)
+# function dispersion(swt::SpinWaveTheory, qs)
+function dispersion(swt, qs)
     (; sys) = swt
     
     Nm, Ns = length(sys.dipoles), sys.Ns[1] # number of magnetic atoms and dimension of Hilbert space

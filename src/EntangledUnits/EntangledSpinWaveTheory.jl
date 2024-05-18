@@ -141,7 +141,6 @@ function swt_data_entangled(sys::System, Ns_unit, contraction_info, obs)
     )
 end
 
-
 function intensity_formula(swt::EntangledSpinWaveTheory, mode::Symbol; kwargs...)
     contractor, string_formula = contractor_from_mode(swt, mode)
     intensity_formula(swt, contractor; string_formula, kwargs...)
