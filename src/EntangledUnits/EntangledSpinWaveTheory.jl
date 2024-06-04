@@ -171,7 +171,7 @@ function intensity_formula(f::Function, swt::EntangledSpinWaveTheory, corr_ix::A
     intensity = zeros(return_type, nmodes)
 
     # TODO: form factors for entangled unit systems
-    # ff_atoms = propagate_form_factors_to_atoms(formfactors, swt.sys.crystal)
+    ff_atoms = propagate_form_factors_to_atoms(formfactors, swt.crystal_origin)
 
     # Upgrade to 2-argument kernel if needed
     kernel_edep = if isnothing(kernel)
@@ -225,7 +225,8 @@ function intensity_formula(f::Function, swt::EntangledSpinWaveTheory, corr_ix::A
             Avec_pref[i] = sqrt_nunits_inv * phase
 
             # TODO: FormFactors for entangled units 
-            # Avec_pref[i] *= compute_form_factor(ff_atoms[i], q_absolute⋅q_absolute)  # I think this may simply be uncommented
+            # Must be moved to where there is information about subsite
+            # Avec_pref[i] *= compute_form_factor(ff_atoms[i], q_absolute⋅q_absolute)  
         end
 
         # Fill `intensity` array
@@ -241,8 +242,13 @@ function intensity_formula(f::Function, swt::EntangledSpinWaveTheory, corr_ix::A
                     O = observable_buf
                     O .= 0
                     for (subsite, (; offset)) in enumerate(inverse_infos)
-                        phase = exp(-2π*im*(q_reshaped ⋅ offset))
-                        O += phase * @view(observable_operators_full[:, :, subsite, μ, i])
+                        # q_reshaped = sys.crystal.recipvecs \ (crystal_origin.recipvecs * q)
+                        # q_absolute = sys.crystal.recipvecs * q_reshaped
+                        q_sub = q_reshaped + offset
+                        q_absolute_sub = sys.crystal.recipvecs * q_sub
+                        
+                        prefactor = exp(-2π*im*(q_reshaped ⋅ offset)) * compute_form_factor(ff_atoms[idx_original], q_absolute_sub ⋅ q_absolute_sub)
+                        O += prefactor * @view(observable_operators_full[:, :, subsite, μ, i])
                     end
                     unit_normalization = 1/√(length(inverse_infos))
 
