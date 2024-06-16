@@ -119,9 +119,11 @@ end
     FWHM = 0.295
     σ = FWHM/2.355
     kernel = ω -> (1/√(2π*σ^2)*exp(-(ω^2/(2σ^2)))) 
-    formfactors = [FormFactor("Mn5")] # TODO: Add support for this -- currently does nothing
-    formula = intensity_formula(swt, :perp; kernel, formfactors)
-    formula_bands = intensity_formula(swt, :perp; kernel=delta_function_kernel, formfactors)
+    # formfactors = [FormFactor("Mn5")] # TODO: Add support for this -- currently does nothing
+    # formula = intensity_formula(swt, :perp; kernel, formfactors)
+    formula = intensity_formula(swt, :perp; kernel)
+    # formula_bands = intensity_formula(swt, :perp; kernel=delta_function_kernel, formfactors)
+    formula_bands = intensity_formula(swt, :perp; kernel=delta_function_kernel)
 
     points = [
         [0.175, 0.175, 1.5],
