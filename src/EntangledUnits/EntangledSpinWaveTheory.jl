@@ -241,13 +241,9 @@ function intensity_formula(f::Function, swt::EntangledSpinWaveTheory, corr_ix::A
                     # Construct q-dependent observable
                     O = observable_buf
                     O .= 0
-                    for (subsite, (; offset)) in enumerate(inverse_infos)
-                        # q_reshaped = sys.crystal.recipvecs \ (crystal_origin.recipvecs * q)
-                        # q_absolute = sys.crystal.recipvecs * q_reshaped
-                        q_sub = q_reshaped + offset
-                        q_absolute_sub = sys.crystal.recipvecs * q_sub
-                        
-                        prefactor = exp(-2π*im*(q_reshaped ⋅ offset)) * compute_form_factor(ff_atoms[idx_original], q_absolute_sub ⋅ q_absolute_sub)
+                    for (subsite, inverse_info) in enumerate(inverse_infos)
+                        site_original, offset = inverse_info.site, inverse_info.offset
+                        prefactor = exp(-2π*im*(q_reshaped ⋅ offset)) * compute_form_factor(ff_atoms[site_original], q_absolute ⋅ q_absolute)
                         O += prefactor * @view(observable_operators_full[:, :, subsite, μ, i])
                     end
                     unit_normalization = 1/√(length(inverse_infos))
